@@ -22,12 +22,13 @@ function AccountsGuard() {
   return <AccountsPage />;
 }
 
-// Giữ nguyên các vai trò tiếng Việt để hiển thị trên UI
-type Role = "Quản lý cấp cao" | "Nhân viên Sản Xuất" | "Nhân viên Kinh Doanh" | "Khách hàng";
+// Sửa lại Type này cho giống Y HỆT kết quả câu lệnh SQL phía trên trả về
+type Role = "Quản lý cấp cao" | "Nhân viên Sản xuất" | "Nhân viên Kinh doanh" | "Khách hàng";
 
 // Khai báo chuẩn theo Database
 type Account = {
   user_id: number;    
+  auth_id: string;
   full_name: string;         
   phone_number: string;     
   email: string;
@@ -57,7 +58,7 @@ function AccountsPage() {
       // 1. SỬA LẠI LỆNH SELECT: Bỏ 'status', thêm 'phone_number' cho đúng database
       const { data, error } = await melodiseDb
         .from("users")
-        .select("user_id, full_name, phone_number, email, role, created_at");
+        .select("user_id, full_name, phone_number, email, role, created_at, auth_id");
         
       if (error || !data) {
         setNotice(
@@ -80,6 +81,7 @@ function AccountsPage() {
           role: (u.role as Role) ?? "Khách hàng", 
           password: u.password, 
           created_at: u.created_at,
+          auth_id: u.auth_id,
         };
       });
       
@@ -108,20 +110,23 @@ function AccountsPage() {
     if (editing) {
       // --- TRƯỜNG HỢP 1: CẬP NHẬT (SỬA) ---
       // Sửa thông tin profile thì không cần Edge Function, gọi thẳng DB cho nhanh
-      const { error } = await melodiseDb
-        .from('users')
-        .update({
-          password: formData.password,
+      const { data: updatedUser, error } = await melodiseDb.functions.invoke('update-admin-user', {
+        body: {
+          auth_id: formData.auth_id,       // Bắt buộc để tìm bên Auth
+          user_id: formData.user_id,       // Bắt buộc để tìm bên bảng users
+          email: formData.email,
+          password: formData.password,     // Nếu người dùng không nhập mật khẩu mới, Edge Function sẽ tự bỏ qua
           full_name: formData.full_name,
           phone_number: formData.phone_number,
           role: formData.role
-        })
-        .eq('user_id', formData.user_id);
+        }
+      });
 
       if (error) throw error;
 
-      setAccounts((prev) => prev.map((a) => (a.user_id === formData.user_id ? formData : a)));
-      toast.success("Cập nhật thành công");
+      // Cập nhật lại State UI bằng dữ liệu sạch, mới nhất do Edge Function trả về
+      setAccounts((prev) => prev.map((a) => (a.user_id === formData.user_id ? updatedUser : a)));
+      toast.success("Cập nhật tài khoản thành công");
 
     } else {
       // --- TRƯỜNG HỢP 2: THÊM MỚI (DÙNG EDGE FUNCTION) ---
@@ -357,7 +362,8 @@ function AccountForm({
       phone_number: "",
       email: "",
       role: "Khách hàng",
-      password: "" // Sẵn sàng để nhập pass
+      password: "", // Sẵn sàng để nhập pass
+      auth_id: "", // Mặc dù auth_id sẽ do hệ thống tạo ra, nhưng để tránh lỗi undefined khi dùng chung form, ta vẫn khai báo ở đây.
     },
   );
   const [error, setError] = useState("");
@@ -447,8 +453,8 @@ function AccountForm({
               className="input"
             >
               <option value="Quản lý cấp cao">Quản lý cấp cao</option>
-              <option value="Nhân viên Sản Xuất">Nhân viên Sản Xuất</option>
-              <option value="Nhân viên Kinh Doanh">Nhân viên Kinh Doanh</option>
+              <option value="Nhân viên Sản xuất">Nhân viên Sản xuất</option>
+              <option value="Nhân viên Kinh doanh">Nhân viên Kinh doanh</option>
               <option value="Khách hàng">Khách hàng</option>
             </select>
           </Field>
