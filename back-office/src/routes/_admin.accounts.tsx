@@ -171,19 +171,23 @@ const confirmDelete = async () => {
   setLoading(true);
 
   try {
-    const { error } = await melodiseDb
-      .from('users')
-      .delete()
-      .eq('user_id', deleting.user_id); // Lấy user_id từ object deleting
+    // 🔥 THAY ĐỔI: Gọi Edge Function xóa thay vì gọi trực tiếp vào Table
+    const { error } = await melodiseDb.functions.invoke('delete-admin-user', {
+      body: { 
+        auth_id: deleting.auth_id, // Gửi UUID sang để xóa bên Auth
+        user_id: deleting.user_id  // Gửi ID số sang để xóa bên Public
+      }
+    });
 
     if (error) throw error;
 
-    // Lọc bỏ Account có user_id trùng với user_id của người vừa xóa
+    // Lọc bỏ Account có user_id trùng với người vừa xóa khỏi State UI
     setAccounts((prev) => prev.filter((a) => a.user_id !== deleting.user_id));
     toast.success("Đã xóa tài khoản thành công");
 
   } catch (err: any) {
-    toast.error("Không thể xóa: " + err.message);
+    console.error("Lỗi khi xóa tài khoản:", err);
+    toast.error("Không thể xóa: " + (err.message || "Có lỗi xảy ra"));
   } finally {
     setLoading(false);
     setDeleting(null);
