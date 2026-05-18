@@ -58,7 +58,8 @@ function AccountsPage() {
       // 1. SỬA LẠI LỆNH SELECT: Bỏ 'status', thêm 'phone_number' cho đúng database
       const { data, error } = await melodiseDb
         .from("users")
-        .select("user_id, full_name, phone_number, email, role, created_at, auth_id");
+        .select("user_id, full_name, phone_number, email, role, created_at, auth_id")
+        .order('user_id', { ascending: true });
         
       if (error || !data) {
         setNotice(
@@ -105,6 +106,56 @@ function AccountsPage() {
 
   const handleSave = async (formData: Account) => {
   setLoading(true); // Giả sử bạn có biến state loading để hiện icon xoay xoay
+
+  const parseServerError = async (error: any) => {
+    try {
+      let errorMsg = "";
+      let errorCode = "";
+
+      // 1. Trích xuất lỗi thực tế được giấu trong error.context của Supabase SDK
+      if (error.context && typeof error.context.json === 'function') {
+        try {
+          const jsonBody = await error.context.json();
+          errorMsg = jsonBody.error || "";
+          errorCode = jsonBody.code || "";
+        } catch (e) {
+          try {
+            errorMsg = await error.context.text();
+          } catch (txtErr) {}
+        }
+      }
+
+      // Nếu context trống, bới thêm trong error.message đề phòng chuỗi JSON thô
+      if (!errorMsg && error.message) {
+        errorMsg = error.message;
+        try {
+          const parsed = JSON.parse(error.message);
+          errorMsg = parsed.error || errorMsg;
+          errorCode = parsed.code || errorCode;
+        } catch (e) {}
+      }
+
+      const lowMsg = errorMsg.toLowerCase();
+      const lowCode = errorCode.toLowerCase();
+
+      // 2. CHỈ TẬP TRUNG XỬ LÝ LỖI TRÙNG EMAIL (Từ cả Auth Server lẫn Postgres Constraint)
+      if (
+        lowCode === 'email_exists' || 
+        lowCode === '23505' || 
+        lowMsg.includes("already been registered") || 
+        lowMsg.includes("already exists") ||
+        lowMsg.includes("email_exists")
+      ) {
+        return new Error("Email đã được sử dụng");
+      }
+
+      // Nếu lọt ra lỗi Database/Hệ thống khác, hiện thông báo lỗi gốc để Admin dễ debug
+      return new Error(errorMsg || "Có lỗi xảy ra từ hệ thống, vui lòng thử lại.");
+
+    } catch (e) {
+      return new Error("Có lỗi xảy ra trong quá trình xử lý phản hồi từ hệ thống.");
+    }
+  };
   
   try {
     if (editing) {
@@ -141,7 +192,9 @@ function AccountsPage() {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        throw await parseServerError(error);
+      }
 
       // newUser ở đây là dữ liệu thật từ DB trả về (đã có user_id và auth_id)
       setAccounts((prev) => [...prev, newUser]);
@@ -378,8 +431,16 @@ function AccountForm({
       setError("Yêu cầu nhập đầy đủ Họ tên và Email");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      setError("Email không hợp lệ");
+
+    const phoneRegex = /^[0-9]{10}$/;
+    if (!phoneRegex.test(form.phone_number.trim())) {
+      setError("Số điện thoại không hợp lệ (Phải gồm đúng 10 chữ số)");
+      return;
+    }
+
+    const strictEmailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!strictEmailRegex.test(form.email.trim())) {
+      setError("Email không đúng định dạng (Ví dụ: abc@gmail.com)");
       return;
     }
     
