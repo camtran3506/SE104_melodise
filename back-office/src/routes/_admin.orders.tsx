@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { Modal } from "@/components/Modal";
-import { Eye, Music2, FileText, Save, Search, ListChecks, Inbox } from "lucide-react";
+import { Save, Search } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { NoPermission } from "@/components/NoPermission";
 
@@ -26,7 +26,6 @@ type Order = {
   total: number;
   status: OrderStatus;
   date: string;
-  // Các trường cấp quyền (STT 4-10)
   licenseCode?: string;
   licenseScope?: string;
   licenseTerm?: string;
@@ -114,60 +113,9 @@ const initialOrders: Order[] = [
 const fmt = (n: number) => n.toLocaleString("vi-VN") + "₫";
 
 function OrdersPage() {
-  const [tab, setTab] = useState<"all" | "approve">("all");
   const [orders, setOrders] = useState<Order[]>(initialOrders);
-
-  return (
-    <>
-      <PageHeader
-        title="Quản lý giao dịch"
-        subtitle="Tra cứu đơn hàng và duyệt đơn cấp quyền cho khách hàng."
-      />
-
-      <div className="mb-4 inline-flex rounded-lg border border-border bg-sidebar/40 p-1">
-        <TabButton active={tab === "all"} onClick={() => setTab("all")}>
-          <ListChecks className="h-4 w-4" /> Tra cứu đơn hàng
-        </TabButton>
-        <TabButton active={tab === "approve"} onClick={() => setTab("approve")}>
-          <Inbox className="h-4 w-4" /> Duyệt đơn và cấp quyền
-        </TabButton>
-      </div>
-
-      {tab === "all" ? (
-        <SearchTab orders={orders} />
-      ) : (
-        <ApprovalTab orders={orders} setOrders={setOrders} />
-      )}
-    </>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition ${
-        active
-          ? "bg-gradient-to-r from-gold to-amber-300 text-primary-foreground shadow-[var(--shadow-gold)]"
-          : "text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function SearchTab({ orders }: { orders: Order[] }) {
   const [keyword, setKeyword] = useState("");
-  const [viewing, setViewing] = useState<Order | null>(null);
+  const [selected, setSelected] = useState<Order | null>(null);
 
   const filtered = useMemo(() => {
     const k = keyword.trim().toLowerCase();
@@ -181,8 +129,19 @@ function SearchTab({ orders }: { orders: Order[] }) {
     );
   }, [orders, keyword]);
 
+  const handleUpdate = (updated: Order) => {
+    setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+    toast.success("Cập nhật thành công");
+    setSelected(null);
+  };
+
   return (
     <>
+      <PageHeader
+        title="Quản lý giao dịch"
+        subtitle="Tra cứu đơn hàng, duyệt và cấp quyền cho khách hàng."
+      />
+
       <div className="mb-4 relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
@@ -193,9 +152,15 @@ function SearchTab({ orders }: { orders: Order[] }) {
         />
       </div>
 
-      <OrdersTable orders={filtered} onView={setViewing} />
+      <OrdersTable orders={filtered} onView={setSelected} />
 
-      {viewing && <OrderDetailModal order={viewing} onClose={() => setViewing(null)} />}
+      {selected && (
+        <ApprovalForm
+          order={selected}
+          onCancel={() => setSelected(null)}
+          onSubmit={handleUpdate}
+        />
+      )}
     </>
   );
 }
@@ -222,7 +187,6 @@ function OrdersTable({
             <tr className="border-b border-border bg-sidebar/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
               <th className="px-4 py-3">Mã đơn</th>
               <th className="px-4 py-3">Khách hàng</th>
-              <th className="px-4 py-3">Bài hát</th>
               <th className="px-4 py-3">Tổng tiền</th>
               <th className="px-4 py-3">Ngày</th>
               <th className="px-4 py-3">Trạng thái</th>
@@ -237,22 +201,6 @@ function OrdersTable({
                   <div className="font-medium">{o.customer}</div>
                   <div className="text-xs text-muted-foreground">{o.email}</div>
                 </td>
-                <td className="px-4 py-3">
-                  <ul className="space-y-1">
-                    {o.items.map((it, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <Music2 className="mt-0.5 h-3 w-3 shrink-0 text-gold" />
-                        <span>
-                          <span className="font-medium">{it.title}</span>
-                          <span className="text-xs text-muted-foreground"> — {it.artist}</span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {o.items.length} bài
-                  </div>
-                </td>
                 <td className="px-4 py-3 font-semibold text-gold">{fmt(o.total)}</td>
                 <td className="px-4 py-3 text-muted-foreground">{o.date}</td>
                 <td className="px-4 py-3">
@@ -263,7 +211,7 @@ function OrdersTable({
                     onClick={() => onView(o)}
                     className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs hover:border-gold hover:text-gold"
                   >
-                    <Eye className="h-3.5 w-3.5" /> Xem chi tiết
+                    Xem chi tiết
                   </button>
                 </td>
               </tr>
@@ -288,101 +236,6 @@ function StatusBadge({ status }: { status: OrderStatus }) {
     >
       {status}
     </span>
-  );
-}
-
-function ApprovalTab({
-  orders,
-  setOrders,
-}: {
-  orders: Order[];
-  setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
-}) {
-  const pending = useMemo(() => orders.filter((o) => o.status === "Chờ duyệt"), [orders]);
-  const [selected, setSelected] = useState<Order | null>(null);
-
-  const handleUpdate = (updated: Order) => {
-    setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
-    toast.success("Cập nhật thành công");
-    setSelected(null);
-  };
-
-  if (pending.length === 0) {
-    return (
-      <div className="glass-card rounded-2xl p-8 text-center text-muted-foreground">
-        Không có đơn hàng nào cần duyệt
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <OrdersTable orders={pending} onView={setSelected} />
-      {selected && (
-        <ApprovalForm
-          order={selected}
-          onCancel={() => setSelected(null)}
-          onSubmit={handleUpdate}
-        />
-      )}
-    </>
-  );
-}
-
-function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => void }) {
-  return (
-    <Modal title={`Chi tiết đơn ${order.id}`} onClose={onClose} size="lg">
-      <div className="space-y-3 text-sm">
-        <div className="grid grid-cols-2 gap-3">
-          <Info label="Khách hàng" value={`${order.customer} — ${order.email}`} />
-          <Info label="Ngày đặt" value={order.date} />
-        </div>
-        <div>
-          <Label>Danh sách bài hát ({order.items.length})</Label>
-          <ul className="mt-1 divide-y divide-border/40 rounded-lg border border-border/40">
-            {order.items.map((it, i) => (
-              <li key={i} className="flex items-center justify-between px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <Music2 className="h-3.5 w-3.5 text-gold" />
-                  <span className="font-medium">{it.title}</span>
-                  <span className="text-xs text-muted-foreground">— {it.artist}</span>
-                </div>
-                <span className="text-gold">{fmt(it.price)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="flex items-center justify-between border-t border-border pt-2">
-          <span className="text-muted-foreground">Tổng cộng</span>
-          <span className="font-bold text-gold">{fmt(order.total)}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Label>Trạng thái:</Label>
-          <StatusBadge status={order.status} />
-        </div>
-        {order.status === "Đã phê duyệt" && (
-          <div className="rounded-lg border border-gold/30 bg-gold/5 p-3 text-xs">
-            <div className="mb-2 flex items-center gap-1 uppercase tracking-wider text-gold">
-              <FileText className="h-3 w-3" /> Thông tin cấp phép
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Info label="Mã giấy phép" value={order.licenseCode} />
-              <Info label="Phạm vi" value={order.licenseScope} />
-              <Info label="Thời hạn" value={order.licenseTerm} />
-              <Info label="Phương thức" value={order.paymentMethod} />
-              <Info label="Người duyệt" value={order.approver} />
-              <Info label="Ngày duyệt" value={order.approveDate} />
-            </div>
-            {order.note && (
-              <div className="mt-2">
-                <Label>Ghi chú</Label>
-                <div>{order.note}</div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </Modal>
   );
 }
 
@@ -440,7 +293,7 @@ function ApprovalForm({
   };
 
   return (
-    <Modal title={`Duyệt đơn ${order.id}`} onClose={onCancel} size="lg">
+    <Modal title={`Chi tiết đơn ${order.id}`} onClose={onCancel} size="lg">
       <div className="space-y-3 text-sm">
         <div className="rounded-lg border border-border/60 bg-sidebar/40 p-3 text-xs">
           <div className="grid grid-cols-2 gap-2">
