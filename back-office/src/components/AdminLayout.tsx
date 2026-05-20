@@ -1,7 +1,6 @@
-import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { signOut, getCurrentUser, hasPermission, ROLE_LABEL } from "@/lib/auth";
 import {
-  LayoutDashboard,
   Users,
   Music2,
   ShoppingBag,
@@ -12,7 +11,6 @@ import {
 import { StarField } from "./StarField";
 
 const nav = [
-  { to: "/", label: "Tổng quan", icon: LayoutDashboard, tab: "dashboard" },
   { to: "/accounts", label: "Tài khoản", icon: Users, tab: "accounts" },
   { to: "/music", label: "Nhạc số", icon: Music2, tab: "music" },
   { to: "/orders", label: "Đơn hàng", icon: ShoppingBag, tab: "orders" },
@@ -22,11 +20,14 @@ const nav = [
 export function AdminLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const router = useRouter(); // Thêm hook useRouter
   const user = getCurrentUser();
 
-  const onSignOut = () => {
-    signOut();
-    navigate({ to: "/login" });
+  // Đã cập nhật lại hàm onSignOut chuẩn Async
+  const onSignOut = async () => {
+    await signOut(); // Chờ xóa session và localStorage xong
+    await router.invalidate(); // Bắt Router dọn dẹp cache và tải lại trạng thái Auth
+    navigate({ to: "/login", replace: true }); // Chuyển hướng và xóa lịch sử trang (không cho back lại)
   };
 
   const visibleNav = nav.filter((n) => hasPermission(user, n.tab));
@@ -58,7 +59,7 @@ export function AdminLayout() {
 
           <nav className="flex flex-1 flex-col gap-1 px-3">
             {visibleNav.map(({ to, label, icon: Icon }) => {
-              const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
+              const active = pathname.startsWith(to);
               return (
                 <Link
                   key={to}

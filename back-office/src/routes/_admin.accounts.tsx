@@ -446,7 +446,7 @@ function AccountForm({
     
     // THÊM KIỂM TRA MẬT KHẨU KHI THÊM MỚI
     if (!initial && (!form.password || form.password.length < 6)) {
-      setError("Vui lòng nhập mật khẩu (tối thiểu 6 ký tự) cho nhân viên mới");
+      setError("Vui lòng nhập mật khẩu (tối thiểu 6 ký tự)");
       return;
     }
 

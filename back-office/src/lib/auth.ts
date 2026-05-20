@@ -1,7 +1,7 @@
 import { melodiseDb } from "./external-supabase";
 
 // 1. Cập nhật Role chuẩn khớp với Database và UI
-export type Role = "admin" | "producer" | "sales" | "customer";
+export type Role = "admin" | "producer" | "sales"
 
 export type AuthUser = {
   user_id: number;      // Thống nhất kiểu số
@@ -20,7 +20,6 @@ function normalizeRole(raw: string | null | undefined): Role | null {
   if (s.includes("cấp cao") || s === "admin") return "admin";
   if (s.includes("sản xuất") || s === "producer") return "producer";
   if (s.includes("kinh doanh") || s === "sales") return "sales";
-  if (s.includes("khách hàng") || s === "customer") return "customer";
   return null;
 }
 
@@ -28,15 +27,13 @@ export const ROLE_LABEL: Record<Role, string> = {
   admin: "Quản lý cấp cao",
   producer: "Nhân viên Sản xuất",
   sales: "Nhân viên Kinh doanh",
-  customer: "Khách hàng",
 };
 
 // 3. Ma trận quyền (Đã thêm quyền cho Customer nếu cần)
 export const PERMISSIONS: Record<Role, string[]> = {
-  admin: ["dashboard", "accounts", "music", "orders", "reports"],
-  producer: ["dashboard", "music"],
-  sales: ["dashboard", "music", "reports"],
-  customer: ["dashboard"], // Khách hàng chỉ xem được dashboard cá nhân
+  admin: ["accounts", "music", "orders", "reports"],
+  producer: ["music"],
+  sales: ["music", "reports"],
 };
 
 export function hasPermission(user: AuthUser | null, tab: string): boolean {
@@ -83,7 +80,7 @@ export async function signIn(
   const role = normalizeRole(userData.role);
   if (!role) {
     await melodiseDb.auth.signOut();
-    return { ok: false, error: `Vai trò "${userData.role}" chưa được hỗ trợ.` };
+    return { ok: false, error: `Vai trò "${userData.role}" không được hỗ trợ.` };
   }
 
   const user: AuthUser = {

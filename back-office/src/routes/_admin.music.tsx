@@ -17,7 +17,6 @@ function MusicGuard() {
   return <MusicPage />;
 }
 
-type TrackStatus = "Đang bán" | "Bản nháp" | "Ngừng bán";
 type Track = {
   id: string;
   title: string;
@@ -28,7 +27,6 @@ type Track = {
   preview: string; // .mp3 only
   original: string; // .mp3 / .wav
   cover?: string;
-  status: TrackStatus;
 };
 type Category = { id: string; name: string; description: string };
 
@@ -40,10 +38,6 @@ function MusicPage() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // THÊM DÒNG NÀY: State để kích hoạt tải lại dữ liệu
-  const [refreshKey, setRefreshKey] = useState(0); 
-  const triggerRefresh = () => setRefreshKey(prev => prev + 1);
 
   useEffect(() => {
     (async () => {
@@ -72,7 +66,7 @@ function MusicPage() {
       });
       setCategories(
         (cRes.data ?? []).map((c: { category_id: number; category: string; description: string | null }) => ({
-          id: `C${String(c.category_id).padStart(2, "0")}`,
+          id: String(c.category_id),
           name: c.category,
           description: c.description ?? "",
         })),
@@ -83,7 +77,7 @@ function MusicPage() {
           demo_audio_url: string | null; original_audio_url: string | null;
           cover_image_url: string | null; artist_id: number | null;
         }) => ({
-          id: `T${String(t.track_id).padStart(3, "0")}`,
+          id: String(t.track_id),
           title: t.title,
           artist: t.artist_id ? artistMap.get(t.artist_id) ?? "—" : "—",
           category: trackCatMap.get(t.track_id) ?? "",
@@ -92,12 +86,11 @@ function MusicPage() {
           preview: t.demo_audio_url?.split("/").pop() ?? "",
           original: t.original_audio_url?.split("/").pop() ?? "",
           cover: t.cover_image_url ?? undefined,
-          status: "Đang bán" as TrackStatus,
         })),
       );
       setLoading(false);
     })();
-  }, [refreshKey]);
+  }, []);
 
   if (loading) {
     return (
@@ -128,7 +121,6 @@ function MusicPage() {
           tracks={tracks}
           setTracks={setTracks}
           categories={categories}
-          triggerRefresh={triggerRefresh}
         />
       ) : (
         <CategoriesTab
@@ -136,7 +128,6 @@ function MusicPage() {
           setCategories={setCategories}
           tracks={tracks}
           setTracks={setTracks}
-          triggerRefresh={triggerRefresh}
         />
       )}
     </>
@@ -170,12 +161,10 @@ function TracksTab({
   tracks,
   setTracks,
   categories,
-  triggerRefresh,
 }: {
   tracks: Track[];
   setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
   categories: Category[];
-  triggerRefresh: () => void;
 }) {
   const [keyword, setKeyword] = useState("");
   const [editing, setEditing] = useState<Track | null>(null);
@@ -190,74 +179,16 @@ function TracksTab({
     );
   }, [tracks, keyword]);
 
-  const handleSave = async (t: Track) => {
-    try {
-      // 1. Lấy category_id từ tên danh mục
-      const { data: catData } = await melodiseDb
-        .from('categories')
-        .select('category_id')
-        .eq('category', t.category)
-        .single();
-      const categoryId = catData?.category_id;
-
-      // 2. Tìm hoặc tạo Artist ID dựa trên tên (Vì bảng tracks dùng artist_id)
-      let artistId = null;
-      if (t.artist.trim()) {
-         const { data: existingArtist } = await melodiseDb.from('artists').select('artist_id').eq('name', t.artist).single();
-         if (existingArtist) {
-           artistId = existingArtist.artist_id;
-         } else {
-           const { data: newArtist } = await melodiseDb.from('artists').insert({ name: t.artist }).select('artist_id').single();
-           artistId = newArtist?.artist_id;
-         }
-      }
-
-      // 3. Chuẩn bị dữ liệu để lưu
-      const payload = {
-        title: t.title,
-        duration: t.duration,
-        price: t.price,
-        demo_audio_url: t.preview,
-        original_audio_url: t.original,
-        cover_image_url: t.cover !== "default-cover.png" ? t.cover : null,
-        artist_id: artistId
-      };
-
-      if (editing) {
-        // CẬP NHẬT
-        const realId = parseInt(t.id.replace("T", ""), 10);
-        await melodiseDb.from('tracks').update(payload).eq('track_id', realId);
-        
-        // CẬP NHẬT DANH MỤC: Xóa cái cũ đi, thêm cái mới vào (Thay thế lệnh upsert bị lỗi)
-        if (categoryId) {
-           // Bước 1: Xóa toàn bộ danh mục cũ của bài nhạc này
-           await melodiseDb.from('track_categories').delete().eq('track_id', realId);
-           
-           // Bước 2: Thêm danh mục mới vào
-           await melodiseDb.from('track_categories').insert({ track_id: realId, category_id: categoryId });
-        }
-        
-        toast.success("Sửa bài nhạc thành công");
-      } else {
-        // THÊM MỚI
-        const { data: newTrack, error } = await melodiseDb.from('tracks').insert(payload).select('track_id').single();
-        if (error) throw error;
-        
-        // Liên kết danh mục
-        if (categoryId && newTrack) {
-           await melodiseDb.from('track_categories').insert({ track_id: newTrack.track_id, category_id: categoryId });
-        }
-        toast.success("Thêm nhạc thành công");
-      }
-      
-      triggerRefresh(); // Tải lại dữ liệu từ DB
-    } catch (e) {
-       toast.error("Có lỗi xảy ra khi lưu dữ liệu!");
-       console.error(e);
-    } finally {
-       setEditing(null);
-       setCreating(false);
+  const handleSave = (t: Track) => {
+    if (editing) {
+      setTracks((prev) => prev.map((x) => (x.id === t.id ? t : x)));
+      toast.success("Sửa thành công");
+    } else {
+      setTracks((prev) => [...prev, t]);
+      toast.success("Thêm nhạc thành công");
     }
+    setEditing(null);
+    setCreating(false);
   };
 
   return (
@@ -309,20 +240,7 @@ function TracksTab({
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
-                <div>
-                  <div className="text-lg font-bold text-gold">{fmt(t.price)}</div>
-                  <div
-                    className={`mt-0.5 text-[10px] uppercase tracking-wider ${
-                      t.status === "Đang bán"
-                        ? "text-emerald-300"
-                        : t.status === "Bản nháp"
-                          ? "text-amber-300"
-                          : "text-destructive-foreground"
-                    }`}
-                  >
-                    {t.status}
-                  </div>
-                </div>
+                <div className="text-lg font-bold text-gold">{fmt(t.price)}</div>
                 {canEditMusic(getCurrentUser()) && (
                   <div className="flex gap-1">
                     <button
@@ -364,19 +282,10 @@ function TracksTab({
         <ConfirmDelete
           name={deleting.title}
           onCancel={() => setDeleting(null)}
-          onConfirm={async () => {
-            try {
-              const realId = parseInt(deleting.id.replace("T", ""), 10);
-              const { error } = await melodiseDb.from('tracks').delete().eq('track_id', realId);
-              if (error) throw error;
-              
-              toast.success("Xóa thành công");
-              triggerRefresh();
-            } catch (e) {
-              toast.error("Không thể xóa bài nhạc này!");
-            } finally {
-              setDeleting(null);
-            }
+          onConfirm={() => {
+            setTracks((prev) => prev.filter((x) => x.id !== deleting.id));
+            toast.success("Xóa thành công");
+            setDeleting(null);
           }}
         />
       )}
@@ -397,9 +306,12 @@ function TrackForm({
   onCancel: () => void;
   onSubmit: (t: Track) => void;
 }) {
+  const nextId = String(
+    (existingIds.reduce((m, x) => Math.max(m, Number(x) || 0), 0) || 0) + 1,
+  );
   const [form, setForm] = useState<Track>(
     initial ?? {
-      id: "T" + String(Math.floor(Math.random() * 900) + 100),
+      id: nextId,
       title: "",
       artist: "",
       category: categories[0]?.name ?? "",
@@ -407,7 +319,6 @@ function TrackForm({
       price: 0,
       preview: "",
       original: "",
-      status: "Bản nháp",
     },
   );
   const [error, setError] = useState("");
@@ -501,27 +412,14 @@ function TrackForm({
             </select>
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Giá bán (VNĐ)">
-            <input
-              type="number"
-              value={form.price || ""}
-              onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
-              className="input"
-            />
-          </Field>
-          <Field label="Trạng thái">
-            <select
-              value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value as TrackStatus })}
-              className="input"
-            >
-              <option>Bản nháp</option>
-              <option>Đang bán</option>
-              <option>Ngừng bán</option>
-            </select>
-          </Field>
-        </div>
+        <Field label="Giá bán (VNĐ)">
+          <input
+            type="number"
+            value={form.price || ""}
+            onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+            className="input"
+          />
+        </Field>
         <Field label="Bản nghe thử (.mp3, có Watermark)">
           <input
             value={form.preview}
@@ -575,13 +473,11 @@ function CategoriesTab({
   setCategories,
   tracks,
   setTracks,
-  triggerRefresh,
 }: {
   categories: Category[];
   setCategories: React.Dispatch<React.SetStateAction<Category[]>>;
   tracks: Track[];
   setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
-  triggerRefresh: () => void;
 }) {
   const [keyword, setKeyword] = useState("");
   const [editing, setEditing] = useState<Category | null>(null);
@@ -594,57 +490,43 @@ function CategoriesTab({
     return categories.filter((c) => c.name.toLowerCase().includes(k));
   }, [categories, keyword]);
 
-  const handleSave = async (data: Category) => {
+  const handleSave = (data: Category) => {
     const trimmed = data.name.trim();
-    if (!trimmed) return toast.error("Yêu cầu nhập đầy đủ thông tin");
-    
-    try {
-      if (editing) {
-        const realId = parseInt(data.id.replace("C", ""), 10);
-        const { error } = await melodiseDb
-          .from('categories')
-          .update({ category: trimmed, description: data.description })
-          .eq('category_id', realId);
-          
-        if (error) throw error;
-        toast.success("Cập nhật danh mục thành công");
-      } else {
-        const { error } = await melodiseDb
-          .from('categories')
-          .insert({ category: trimmed, description: data.description });
-          
-        if (error) throw error;
-        toast.success("Thêm danh mục mới thành công");
-      }
-      
-      triggerRefresh();
-    } catch (e) {
-      toast.error("Lỗi khi lưu danh mục!");
-      console.error(e);
-    } finally {
-      setEditing(null);
-      setCreating(false);
+    if (!trimmed) {
+      toast.error("Yêu cầu nhập đầy đủ thông tin");
+      return;
     }
+    const dup = categories.some(
+      (c) => c.name.toLowerCase() === trimmed.toLowerCase() && c.id !== data.id,
+    );
+    if (dup) {
+      toast.error("Tên danh mục trùng — vui lòng nhập tên khác");
+      return;
+    }
+    if (editing) {
+      const oldName = editing.name;
+      setCategories((prev) => prev.map((c) => (c.id === data.id ? data : c)));
+      setTracks((prev) =>
+        prev.map((t) => (t.category === oldName ? { ...t, category: data.name } : t)),
+      );
+      toast.success("Sửa thành công");
+    } else {
+      setCategories((prev) => [...prev, data]);
+      toast.success("Thêm thành công");
+    }
+    setEditing(null);
+    setCreating(false);
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     if (!deleting) return;
-    try {
-      const realId = parseInt(deleting.id.replace("C", ""), 10);
-      const { error } = await melodiseDb
-        .from('categories')
-        .delete()
-        .eq('category_id', realId);
-        
-      if (error) throw error;
-      
-      toast.success("Xoá danh mục thành công");
-      triggerRefresh();
-    } catch (e) {
-      toast.error("Lỗi: Không thể xóa danh mục đang có chứa bài nhạc!");
-    } finally {
-      setDeleting(null);
-    }
+    setCategories((prev) => prev.filter((c) => c.id !== deleting.id));
+    // Ràng buộc: gỡ danh mục khỏi bài nhạc đang dùng
+    setTracks((prev) =>
+      prev.map((t) => (t.category === deleting.name ? { ...t, category: "" } : t)),
+    );
+    toast.success("Xoá thành công");
+    setDeleting(null);
   };
 
   return (
@@ -722,6 +604,7 @@ function CategoriesTab({
       {(editing || creating) && (
         <CategoryForm
           initial={editing}
+          existingIds={categories.map((c) => c.id)}
           onCancel={() => {
             setEditing(null);
             setCreating(false);
@@ -744,15 +627,20 @@ function CategoriesTab({
 
 function CategoryForm({
   initial,
+  existingIds,
   onCancel,
   onSubmit,
 }: {
   initial: Category | null;
+  existingIds: string[];
   onCancel: () => void;
   onSubmit: (c: Category) => void;
 }) {
+  const nextId = String(
+    (existingIds.reduce((m, x) => Math.max(m, Number(x) || 0), 0) || 0) + 1,
+  );
   const [form, setForm] = useState<Category>(
-    initial ?? { id: "C" + String(Math.floor(Math.random() * 90) + 10), name: "", description: "" },
+    initial ?? { id: nextId, name: "", description: "" },
   );
   return (
     <Modal title={initial ? "Sửa danh mục" : "Thêm danh mục"} onClose={onCancel}>
