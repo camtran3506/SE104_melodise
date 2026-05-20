@@ -41,6 +41,10 @@ function MusicPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // THÊM DÒNG NÀY: State để kích hoạt tải lại dữ liệu
+  const [refreshKey, setRefreshKey] = useState(0); 
+  const triggerRefresh = () => setRefreshKey(prev => prev + 1);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -93,7 +97,7 @@ function MusicPage() {
       );
       setLoading(false);
     })();
-  }, []);
+  }, [refreshKey]);
 
   if (loading) {
     return (
@@ -124,6 +128,7 @@ function MusicPage() {
           tracks={tracks}
           setTracks={setTracks}
           categories={categories}
+          triggerRefresh={triggerRefresh}
         />
       ) : (
         <CategoriesTab
@@ -131,6 +136,7 @@ function MusicPage() {
           setCategories={setCategories}
           tracks={tracks}
           setTracks={setTracks}
+          triggerRefresh={triggerRefresh}
         />
       )}
     </>
@@ -164,10 +170,12 @@ function TracksTab({
   tracks,
   setTracks,
   categories,
+  triggerRefresh,
 }: {
   tracks: Track[];
   setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
   categories: Category[];
+  triggerRefresh: () => void;
 }) {
   const [keyword, setKeyword] = useState("");
   const [editing, setEditing] = useState<Track | null>(null);
@@ -182,16 +190,74 @@ function TracksTab({
     );
   }, [tracks, keyword]);
 
-  const handleSave = (t: Track) => {
-    if (editing) {
-      setTracks((prev) => prev.map((x) => (x.id === t.id ? t : x)));
-      toast.success("Sửa thành công");
-    } else {
-      setTracks((prev) => [...prev, t]);
-      toast.success("Thêm nhạc thành công");
+  const handleSave = async (t: Track) => {
+    try {
+      // 1. Lấy category_id từ tên danh mục
+      const { data: catData } = await melodiseDb
+        .from('categories')
+        .select('category_id')
+        .eq('category', t.category)
+        .single();
+      const categoryId = catData?.category_id;
+
+      // 2. Tìm hoặc tạo Artist ID dựa trên tên (Vì bảng tracks dùng artist_id)
+      let artistId = null;
+      if (t.artist.trim()) {
+         const { data: existingArtist } = await melodiseDb.from('artists').select('artist_id').eq('name', t.artist).single();
+         if (existingArtist) {
+           artistId = existingArtist.artist_id;
+         } else {
+           const { data: newArtist } = await melodiseDb.from('artists').insert({ name: t.artist }).select('artist_id').single();
+           artistId = newArtist?.artist_id;
+         }
+      }
+
+      // 3. Chuẩn bị dữ liệu để lưu
+      const payload = {
+        title: t.title,
+        duration: t.duration,
+        price: t.price,
+        demo_audio_url: t.preview,
+        original_audio_url: t.original,
+        cover_image_url: t.cover !== "default-cover.png" ? t.cover : null,
+        artist_id: artistId
+      };
+
+      if (editing) {
+        // CẬP NHẬT
+        const realId = parseInt(t.id.replace("T", ""), 10);
+        await melodiseDb.from('tracks').update(payload).eq('track_id', realId);
+        
+        // CẬP NHẬT DANH MỤC: Xóa cái cũ đi, thêm cái mới vào (Thay thế lệnh upsert bị lỗi)
+        if (categoryId) {
+           // Bước 1: Xóa toàn bộ danh mục cũ của bài nhạc này
+           await melodiseDb.from('track_categories').delete().eq('track_id', realId);
+           
+           // Bước 2: Thêm danh mục mới vào
+           await melodiseDb.from('track_categories').insert({ track_id: realId, category_id: categoryId });
+        }
+        
+        toast.success("Sửa bài nhạc thành công");
+      } else {
+        // THÊM MỚI
+        const { data: newTrack, error } = await melodiseDb.from('tracks').insert(payload).select('track_id').single();
+        if (error) throw error;
+        
+        // Liên kết danh mục
+        if (categoryId && newTrack) {
+           await melodiseDb.from('track_categories').insert({ track_id: newTrack.track_id, category_id: categoryId });
+        }
+        toast.success("Thêm nhạc thành công");
+      }
+      
+      triggerRefresh(); // Tải lại dữ liệu từ DB
+    } catch (e) {
+       toast.error("Có lỗi xảy ra khi lưu dữ liệu!");
+       console.error(e);
+    } finally {
+       setEditing(null);
+       setCreating(false);
     }
-    setEditing(null);
-    setCreating(false);
   };
 
   return (
@@ -298,10 +364,19 @@ function TracksTab({
         <ConfirmDelete
           name={deleting.title}
           onCancel={() => setDeleting(null)}
-          onConfirm={() => {
-            setTracks((prev) => prev.filter((x) => x.id !== deleting.id));
-            toast.success("Xóa thành công");
-            setDeleting(null);
+          onConfirm={async () => {
+            try {
+              const realId = parseInt(deleting.id.replace("T", ""), 10);
+              const { error } = await melodiseDb.from('tracks').delete().eq('track_id', realId);
+              if (error) throw error;
+              
+              toast.success("Xóa thành công");
+              triggerRefresh();
+            } catch (e) {
+              toast.error("Không thể xóa bài nhạc này!");
+            } finally {
+              setDeleting(null);
+            }
           }}
         />
       )}
@@ -500,11 +575,13 @@ function CategoriesTab({
   setCategories,
   tracks,
   setTracks,
+  triggerRefresh,
 }: {
   categories: Category[];
   setCategories: React.Dispatch<React.SetStateAction<Category[]>>;
   tracks: Track[];
   setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
+  triggerRefresh: () => void;
 }) {
   const [keyword, setKeyword] = useState("");
   const [editing, setEditing] = useState<Category | null>(null);
@@ -517,43 +594,57 @@ function CategoriesTab({
     return categories.filter((c) => c.name.toLowerCase().includes(k));
   }, [categories, keyword]);
 
-  const handleSave = (data: Category) => {
+  const handleSave = async (data: Category) => {
     const trimmed = data.name.trim();
-    if (!trimmed) {
-      toast.error("Yêu cầu nhập đầy đủ thông tin");
-      return;
+    if (!trimmed) return toast.error("Yêu cầu nhập đầy đủ thông tin");
+    
+    try {
+      if (editing) {
+        const realId = parseInt(data.id.replace("C", ""), 10);
+        const { error } = await melodiseDb
+          .from('categories')
+          .update({ category: trimmed, description: data.description })
+          .eq('category_id', realId);
+          
+        if (error) throw error;
+        toast.success("Cập nhật danh mục thành công");
+      } else {
+        const { error } = await melodiseDb
+          .from('categories')
+          .insert({ category: trimmed, description: data.description });
+          
+        if (error) throw error;
+        toast.success("Thêm danh mục mới thành công");
+      }
+      
+      triggerRefresh();
+    } catch (e) {
+      toast.error("Lỗi khi lưu danh mục!");
+      console.error(e);
+    } finally {
+      setEditing(null);
+      setCreating(false);
     }
-    const dup = categories.some(
-      (c) => c.name.toLowerCase() === trimmed.toLowerCase() && c.id !== data.id,
-    );
-    if (dup) {
-      toast.error("Tên danh mục trùng — vui lòng nhập tên khác");
-      return;
-    }
-    if (editing) {
-      const oldName = editing.name;
-      setCategories((prev) => prev.map((c) => (c.id === data.id ? data : c)));
-      setTracks((prev) =>
-        prev.map((t) => (t.category === oldName ? { ...t, category: data.name } : t)),
-      );
-      toast.success("Sửa thành công");
-    } else {
-      setCategories((prev) => [...prev, data]);
-      toast.success("Thêm thành công");
-    }
-    setEditing(null);
-    setCreating(false);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleting) return;
-    setCategories((prev) => prev.filter((c) => c.id !== deleting.id));
-    // Ràng buộc: gỡ danh mục khỏi bài nhạc đang dùng
-    setTracks((prev) =>
-      prev.map((t) => (t.category === deleting.name ? { ...t, category: "" } : t)),
-    );
-    toast.success("Xoá thành công");
-    setDeleting(null);
+    try {
+      const realId = parseInt(deleting.id.replace("C", ""), 10);
+      const { error } = await melodiseDb
+        .from('categories')
+        .delete()
+        .eq('category_id', realId);
+        
+      if (error) throw error;
+      
+      toast.success("Xoá danh mục thành công");
+      triggerRefresh();
+    } catch (e) {
+      toast.error("Lỗi: Không thể xóa danh mục đang có chứa bài nhạc!");
+    } finally {
+      setDeleting(null);
+    }
   };
 
   return (
