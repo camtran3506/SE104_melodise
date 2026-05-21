@@ -69,10 +69,15 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      // Thêm dòng log này để theo dõi
+      console.log("👉 Đang chuẩn bị render URL:", request.url); 
+      
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
+      // Cập nhật dòng log lỗi này
+      console.error("❌ Lỗi nghiêm trọng khi render URL:", request.url); 
       console.error(error);
       return brandedErrorResponse();
     }

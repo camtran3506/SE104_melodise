@@ -1,13 +1,5 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import cover1 from "@/assets/cover-1.jpg";
-import cover2 from "@/assets/cover-2.jpg";
-import cover3 from "@/assets/cover-3.jpg";
-import cover4 from "@/assets/cover-4.jpg";
-import cover5 from "@/assets/cover-5.jpg";
-import cover6 from "@/assets/cover-6.jpg";
-import cover7 from "@/assets/cover-7.jpg";
-import cover8 from "@/assets/cover-8.jpg";
 
 export type Track = {
   id: string;
@@ -30,9 +22,6 @@ export let TRACKS: Track[] = [];
 export function setTracksCache(arr: Track[]) {
   TRACKS = arr;
 }
-
-// Fallback covers (kept for any legacy reference)
-void [cover1, cover2, cover3, cover4, cover5, cover6, cover7, cover8];
 
 type CartItem = { trackId: string };
 type Order = { id: string; trackIds: string[]; total: number; createdAt: number; status: "pending" | "approved" };
