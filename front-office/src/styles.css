@@ -1,0 +1,195 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-display: "Montserrat", "Poppins", system-ui, sans-serif;
+  --font-sans: "Poppins", "Montserrat", system-ui, sans-serif;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  --radius-3xl: 40px;
+  --radius-pill: 999px;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-gold: var(--gold);
+  --color-gold-deep: var(--gold-deep);
+  --color-cobalt: var(--cobalt);
+  --color-teal: var(--teal);
+  --color-canvas: var(--canvas);
+  --color-mist: var(--mist);
+
+  --shadow-glow: 0 0 28px -2px color-mix(in oklab, var(--gold) 55%, transparent),
+                 0 0 80px -10px color-mix(in oklab, var(--gold-deep) 40%, transparent);
+  --shadow-glow-soft: 0 0 18px -4px color-mix(in oklab, var(--gold) 35%, transparent);
+}
+
+:root {
+  --radius: 18px;
+
+  /* Midnight Blue + Luxe Gold */
+  --cobalt: #001F3F;        /* deep midnight blue base */
+  --teal: #052A4E;          /* surface raised */
+  --gold: #D4AF37;          /* primary luxe gold */
+  --gold-deep: #C5A059;     /* secondary warm gold */
+  --canvas: #FFFFFF;        /* pure white headings */
+  --mist: #E0E0E0;          /* soft silver body */
+
+  --background: #001F3F;
+  --foreground: #FFFFFF;
+
+  --card: rgba(255, 255, 255, 0.04);
+  --card-foreground: #FFFFFF;
+
+  --popover: #052A4E;
+  --popover-foreground: #FFFFFF;
+
+  --primary: #D4AF37;
+  --primary-foreground: #001F3F;
+
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: #FFFFFF;
+
+  --muted: rgba(255, 255, 255, 0.05);
+  --muted-foreground: #E0E0E0;
+
+  --accent: #C5A059;
+  --accent-foreground: #001F3F;
+
+  --destructive: #E5484D;
+  --destructive-foreground: #FFFFFF;
+
+  --border: rgba(212, 175, 55, 0.18);
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: #D4AF37;
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+
+  html, body { background-color: var(--cobalt); color: var(--canvas); }
+
+  body {
+    font-family: var(--font-sans);
+    background:
+      radial-gradient(ellipse 60% 45% at 18% 10%, rgba(212,175,55,0.10), transparent 65%),
+      radial-gradient(ellipse 55% 40% at 85% 18%, rgba(197,160,89,0.08), transparent 70%),
+      radial-gradient(ellipse 70% 50% at 50% 100%, rgba(212,175,55,0.06), transparent 75%),
+      linear-gradient(180deg, #001833 0%, #001F3F 55%, #00172E 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    position: relative;
+  }
+
+  /* velvet noise + faint stars overlay */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      radial-gradient(1.2px 1.2px at 12% 22%, rgba(255,255,255,0.55), transparent 60%),
+      radial-gradient(1px 1px at 28% 70%, rgba(212,175,55,0.55), transparent 60%),
+      radial-gradient(1.4px 1.4px at 47% 35%, rgba(255,255,255,0.45), transparent 60%),
+      radial-gradient(1px 1px at 63% 80%, rgba(255,255,255,0.4), transparent 60%),
+      radial-gradient(1.6px 1.6px at 78% 28%, rgba(212,175,55,0.55), transparent 60%),
+      radial-gradient(1px 1px at 88% 60%, rgba(255,255,255,0.4), transparent 60%),
+      radial-gradient(1.2px 1.2px at 35% 90%, rgba(255,255,255,0.35), transparent 60%),
+      radial-gradient(1.4px 1.4px at 70% 12%, rgba(255,255,255,0.5), transparent 60%);
+    background-repeat: no-repeat;
+    opacity: 0.85;
+  }
+
+  /* crescent moon — minimalist, blurred top-right */
+  body::after {
+    content: "";
+    position: fixed;
+    top: 8vh;
+    right: 6vw;
+    width: 140px;
+    height: 140px;
+    pointer-events: none;
+    z-index: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 65% 50%, transparent 55%, rgba(212,175,55,0.18) 56%, rgba(212,175,55,0.05) 70%, transparent 80%);
+    filter: blur(0.5px);
+    opacity: 0.7;
+  }
+
+  h1, h2, h3, h4, h5 { font-family: var(--font-display); letter-spacing: -0.015em; font-weight: 700; }
+}
+
+@layer utilities {
+  .glass {
+    background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(212,175,55,0.05));
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid rgba(212,175,55,0.22);
+    box-shadow: 0 20px 60px -20px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .glass-soft {
+    background: rgba(255,255,255,0.04);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(212,175,55,0.18);
+  }
+  .text-gold { color: var(--gold); }
+  .text-mist { color: var(--mist); }
+  .glow-gold { box-shadow: var(--shadow-glow); }
+  .ring-gold-soft { box-shadow: 0 0 0 1px rgba(212,175,55,0.4); }
+
+  .swirl-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(212,175,55,0.7), rgba(197,160,89,0.5), transparent);
+  }
+
+  .gradient-text {
+    background: linear-gradient(120deg, #D4AF37 0%, #F0D77A 50%, #C5A059 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .star-twinkle { animation: twinkle 2.4s ease-in-out infinite; }
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.2); }
+  }
+
+  .float-slow { animation: float 8s ease-in-out infinite; }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  .marquee-glow {
+    background: conic-gradient(from 0deg, #D4AF37, #C5A059, #F0D77A, #D4AF37);
+    animation: spin 6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+}
+
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Poppins:wght@300;400;500;600;700&display=swap");
