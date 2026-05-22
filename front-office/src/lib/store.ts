@@ -26,7 +26,7 @@ export function setTracksCache(arr: Track[]) {
 type CartItem = { trackId: string };
 type Order = { id: string; trackIds: string[]; total: number; createdAt: number; status: "pending" | "approved" };
 
-type User = { name: string; email: string; phone: string };
+type User = { name: string; email: string; phone: string; role: "Khách hàng" | "Nhân viên Sản xuất" | "Quản lý cấp cao" | "Nhân viên Kinh doanh" };
 
 type Store = {
   user: User | null;

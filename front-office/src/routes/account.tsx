@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/account")({
   component: Account,
@@ -29,11 +30,27 @@ function Account() {
     );
   }
 
-  function save() {
+  async function save() {
+    // 1. GỌI API CẬP NHẬT DATABASE
+    // Thêm (supabase as any) để bỏ qua lỗi vạch đỏ của TypeScript
+    const { error } = await (supabase as any)
+      .from('users') // Thay bằng tên bảng thực tế của bạn nếu khác
+      .update({ 
+        full_name: name, 
+        phone_number: phone 
+      })
+      .eq('email', user!.email);
+
+    if (error) {
+      return toast.error("Có lỗi xảy ra khi lưu thông tin: " + error.message);
+    }
+
+    // 2. THÀNH CÔNG THÌ MỚI CẬP NHẬT GIAO DIỆN LOCAL STORE
     update({ name, phone, email });
     setEdit(false);
     toast.success("Cập nhật thành công");
   }
+
   function cancel() {
     setName(user!.name); setPhone(user!.phone); setEmail(user!.email); setPw("");
     setEdit(false);
