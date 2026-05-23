@@ -24,7 +24,23 @@ export function setTracksCache(arr: Track[]) {
 }
 
 type CartItem = { trackId: string };
-type Order = { id: string; trackIds: string[]; total: number; createdAt: number; status: "pending" | "approved" };
+// Trong store.ts, thêm cấu trúc này vào:
+export type License = {
+  license_code: string;
+  license_scope: string;
+  license_term: string;
+  issued_at: string;
+};
+
+// Cập nhật type Order trong store.ts
+type Order = { 
+  id: string; 
+  trackIds: string[]; 
+  total: number; 
+  createdAt: number; 
+  status: "pending" | "approved"; 
+  licenses?: License[]; // <--- BẮT BUỘC THÊM DÒNG NÀY
+};
 
 type User = { name: string; email: string; phone: string; role: "Khách hàng" | "Nhân viên Sản xuất" | "Quản lý cấp cao" | "Nhân viên Kinh doanh" };
 
