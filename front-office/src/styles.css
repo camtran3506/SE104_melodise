@@ -192,3 +192,8 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 }
+
+/* Ép màu sáng cho phần mô tả của thông báo (Sonner Toast) */
+[data-sonner-toast] [data-description] {
+  color: rgba(255, 255, 255, 0.8) !important;
+}

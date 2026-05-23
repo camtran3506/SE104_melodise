@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ShoppingBag, Clock, Music, User } from "lucide-react";
+import { ShoppingBag, Clock, Music, FileText } from "lucide-react"; // Đã đổi User thành FileText
 import { Button } from "@/components/ui/button";
 import { useStore, formatVND } from "@/lib/store";
 import { useTrack } from "@/lib/tracks-api";
@@ -70,20 +70,22 @@ function TrackDetail() {
         </div>
       </div>
 
+      {/* Sửa đổi Section dưới này: Chuyển từ hiện tiểu sử nghệ sĩ sang hiện mô tả bài nhạc */}
       <section className="mt-12 glass rounded-3xl p-6 md:p-8">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-full bg-gold/15 text-gold grid place-items-center ring-1 ring-gold/30">
-            <User className="h-5 w-5" />
+            <FileText className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-mist/60 text-[10px] uppercase tracking-[0.3em]">Nghệ sĩ</p>
-            <h2 className="font-display text-2xl text-canvas">{track.artist}</h2>
+            <h2 className="font-display text-2xl text-canvas">Mô tả</h2>
           </div>
         </div>
-        {track.artistBio ? (
-          <p className="text-mist/80 mt-4 leading-relaxed">{track.artistBio}</p>
+        {track.description ? (
+          <p className="text-mist/80 mt-4 leading-relaxed whitespace-pre-line">
+            {track.description}
+          </p>
         ) : (
-          <p className="text-mist/50 mt-4 italic">Chưa có thông tin giới thiệu về nghệ sĩ.</p>
+          <p className="text-mist/50 mt-4 italic">Chưa có thông tin mô tả cho bài nhạc này.</p>
         )}
       </section>
     </div>

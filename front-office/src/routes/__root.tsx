@@ -129,7 +129,21 @@ function RootComponent() {
         <Footer />
       </div>
       <Player />
-      <Toaster position="bottom-right" toastOptions={{ style: { background: "rgba(28,40,65,0.95)", border: "1px solid rgba(242,201,76,0.4)", color: "#FDFBF7", borderRadius: "16px" } }} />
+      <Toaster 
+        position="bottom-right" 
+        toastOptions={{ 
+          style: { 
+            background: "rgba(28,40,65,0.95)", 
+            border: "1px solid rgba(242,201,76,0.4)", 
+            color: "#FDFBF7", 
+            borderRadius: "16px" 
+          },
+          // Thêm block classNames này để chỉnh màu chữ cho description sáng lên
+          classNames: {
+            description: "text-mist opacity-90", // Sử dụng token màu 'mist' (bạc mềm mại) của bạn
+          },
+        }} 
+      />
     </QueryClientProvider>
   );
 }

@@ -60,7 +60,8 @@ function Checkout() {
         .insert([
           { 
             user_id: userData.user_id, 
-            status: 'Chờ duyệt' // <--- SỬA LẠI CHỮ NÀY NẾU ENUM CỦA BẠN LÀ CHỮ KHÁC (VD: 'Pending', 'Chờ xử lý'...)
+            status: 'Chờ duyệt', // <--- SỬA LẠI CHỮ NÀY NẾU ENUM CỦA BẠN LÀ CHỮ KHÁC (VD: 'Pending', 'Chờ xử lý'...)
+            order_code: order.id  // <--- THÊM DÒNG NÀY ĐỂ LƯU MÃ GIAO DỊCH
           }
         ])
         .select('order_id')
