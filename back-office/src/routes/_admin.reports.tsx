@@ -7,7 +7,7 @@ import { Modal } from "@/components/Modal";
 import { Download, TrendingUp, Music2, FileSpreadsheet, Loader2 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { NoPermission } from "@/components/NoPermission";
-import { melodiseDb } from "@/lib/external-supabase";
+import { melodiseDb as supabase } from "@/lib/external-supabase";
 
 export const Route = createFileRoute("/_admin/reports")({
   component: ReportsGuard,
@@ -18,8 +18,6 @@ function ReportsGuard() {
     return <NoPermission tab="Báo cáo doanh thu" />;
   return <ReportsPage />;
 }
-
-const fmtVnd = (n: number) => (n ?? 0).toLocaleString("vi-VN") + "₫";
 
 function ReportsPage() {
   const [exporting, setExporting] = useState(false);
@@ -43,7 +41,7 @@ function ReportsPage() {
         <p className="mb-2 text-foreground">
           Nhấn <span className="text-gold">“Xuất báo cáo”</span> để mở hộp thoại chọn loại báo
           cáo và khoảng thời gian. Hệ thống sẽ truy vấn các hoá đơn có trạng thái{" "}
-          <span className="text-gold">“Duyệt”</span> trong khoảng đã chọn và xuất ra file Excel
+          <span className="text-gold">“Đã duyệt”</span> trong khoảng đã chọn và xuất ra file Excel
           (.xlsx).
         </p>
         <ul className="list-disc space-y-1 pl-5">
@@ -58,26 +56,6 @@ function ReportsPage() {
 }
 
 type ReportType = "revenue" | "top";
-
-type RevenueRow = Record<string, unknown>;
-type TopRow = Record<string, unknown>;
-
-// Tìm cột số đầu tiên khớp tên (tolerant với schema khác nhau)
-function pickNumber(row: Record<string, unknown>, keys: string[]): number {
-  for (const k of keys) {
-    const v = row[k];
-    if (typeof v === "number") return v;
-    if (typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
-  }
-  return 0;
-}
-function pickString(row: Record<string, unknown>, keys: string[]): string {
-  for (const k of keys) {
-    const v = row[k];
-    if (v != null && v !== "") return String(v);
-  }
-  return "";
-}
 
 function ExportModal({ onClose }: { onClose: () => void }) {
   const [type, setType] = useState<ReportType>("revenue");
@@ -176,8 +154,7 @@ function ExportModal({ onClose }: { onClose: () => void }) {
         )}
 
         <div className="text-[11px] text-muted-foreground">
-          File xuất ra định dạng Excel (.xlsx). Dữ liệu được lấy trực tiếp từ cơ sở dữ liệu
-          hoá đơn có trạng thái “Duyệt”.
+          File xuất ra định dạng Excel (.xlsx). Dữ liệu được tính toán thời gian thực bằng RPC dưới Database.
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
@@ -206,144 +183,149 @@ function ExportModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// =============== EXPORT REVENUE ===============
+// =============== EXPORT REVENUE (ĐÃ NÂNG CẤP THẨM MỸ) ===============
 async function exportRevenue(
   from: string,
   to: string,
   setInfo: (s: string) => void,
 ) {
-  const { data, error } = await melodiseDb.rpc("get_revenue_report", {
+  const { data, error } = await supabase.rpc("get_revenue_report", {
     start_date: from,
     end_date: to,
   });
   if (error) throw new Error(error.message);
 
-  const rows: RevenueRow[] = Array.isArray(data) ? data : data ? [data] : [];
-  const isEmpty = rows.length === 0;
+  const rows = data || [];
+  if (rows.length === 0) {
+    setInfo("Không có dữ liệu trong khoảng thời gian này. Đã xuất file rỗng.");
+  }
 
-  // Cộng dồn: total_revenue / total_orders
   let totalRevenue = 0;
   let totalOrders = 0;
   const daily: { period: string; revenue: number; orders: number }[] = [];
+
   for (const r of rows) {
-    const rev = pickNumber(r, [
-      "revenue",
-      "total_revenue",
-      "total",
-      "amount",
-      "doanh_thu",
-      "tong_doanh_thu",
-    ]);
-    const ord = pickNumber(r, [
-      "orders",
-      "total_orders",
-      "order_count",
-      "so_don_hang",
-      "tong_don",
-    ]);
-    const period = pickString(r, [
-      "period",
-      "date",
-      "day",
-      "month",
-      "ngay",
-      "thang",
-    ]);
+    const rev = Number(r.total_revenue) || 0;
+    const ord = Number(r.total_orders) || 0;
+    const period = r.order_date ? new Date(r.order_date).toLocaleDateString("vi-VN") : "Không rõ";
+    
     totalRevenue += rev;
     totalOrders += ord;
     daily.push({ period, revenue: rev, orders: ord });
   }
 
-  if (isEmpty || (totalRevenue === 0 && totalOrders === 0)) {
-    setInfo("Không có dữ liệu trong khoảng thời gian này. Đã xuất file rỗng.");
-  }
-
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Báo cáo doanh thu");
 
-  ws.mergeCells("A1:D1");
+  // 1. Khối Tiêu đề
+  ws.mergeCells("A1:C1"); 
   ws.getCell("A1").value = "BÁO CÁO DOANH THU";
   ws.getCell("A1").font = { bold: true, size: 16, color: { argb: "FFB8860B" } };
-  ws.getCell("A1").alignment = { horizontal: "center" };
+  ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+  ws.getRow(1).height = 30;
 
-  ws.getCell("A2").value = "Từ ngày:";
-  ws.getCell("B2").value = from;
-  ws.getCell("A3").value = "Đến ngày:";
-  ws.getCell("B3").value = to;
-  ws.getCell("A4").value = "Tổng doanh thu:";
-  ws.getCell("B4").value = totalRevenue;
-  ws.getCell("B4").numFmt = '#,##0" ₫"';
-  ws.getCell("B4").font = { bold: true };
-  ws.getCell("A5").value = "Tổng số đơn hàng:";
-  ws.getCell("B5").value = totalOrders;
-  ws.getCell("B5").font = { bold: true };
+  // 2. Khối Summary
+  ws.getCell("A3").value = "Từ ngày:";
+  ws.getCell("B3").value = from;
+  ws.getCell("A4").value = "Đến ngày:";
+  ws.getCell("B4").value = to;
+  ws.getCell("A5").value = "Tổng doanh thu:";
+  ws.getCell("B5").value = totalRevenue;
+  ws.getCell("B5").numFmt = '#,##0" ₫"';
+  ws.getCell("B5").font = { bold: true, color: { argb: "FFD2691E" } };
+  ws.getCell("A6").value = "Tổng số đơn hàng:";
+  ws.getCell("B6").value = totalOrders;
+  ws.getCell("B6").font = { bold: true };
 
-  ws.getCell("A7").value = "Kỳ";
-  ws.getCell("B7").value = "Doanh thu (VNĐ)";
-  ws.getCell("C7").value = "Số đơn";
-  ["A7", "B7", "C7"].forEach((c) => {
-    ws.getCell(c).font = { bold: true, color: { argb: "FFFFFFFF" } };
-    ws.getCell(c).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFB8860B" },
+  // 3. Khối Header Bảng biểu (Kẻ viền đậm)
+  const headerRow = 8;
+  ws.getCell(`A${headerRow}`).value = "Ngày giao dịch";
+  ws.getCell(`B${headerRow}`).value = "Doanh thu (VNĐ) + Biểu đồ";
+  ws.getCell(`C${headerRow}`).value = "Số lượng đơn thành công";
+
+  ['A', 'B', 'C'].forEach((col) => {
+    const cell = ws.getCell(`${col}${headerRow}`);
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFB8860B" } };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+    cell.border = {
+      top: { style: 'medium', color: { argb: 'FF8B6508' } },
+      left: { style: 'medium', color: { argb: 'FF8B6508' } },
+      bottom: { style: 'medium', color: { argb: 'FF8B6508' } },
+      right: { style: 'medium', color: { argb: 'FF8B6508' } }
     };
   });
+  ws.getRow(headerRow).height = 25;
 
+  // 4. Khối Dữ liệu chi tiết (Kẻ viền mỏng)
   if (daily.length === 0) {
-    ws.getCell("A8").value = "(Không có dữ liệu)";
+    ws.mergeCells(`A9:C9`);
+    ws.getCell("A9").value = "(Không có dữ liệu)";
+    ws.getCell("A9").alignment = { horizontal: "center" };
   } else {
     daily.forEach((d, i) => {
-      const r = 8 + i;
-      ws.getCell(`A${r}`).value = d.period || `Kỳ ${i + 1}`;
+      const r = headerRow + 1 + i;
+      ws.getCell(`A${r}`).value = d.period;
+      ws.getCell(`A${r}`).alignment = { horizontal: "center" };
+
       ws.getCell(`B${r}`).value = d.revenue;
       ws.getCell(`B${r}`).numFmt = '#,##0" ₫"';
+
       ws.getCell(`C${r}`).value = d.orders;
+      ws.getCell(`C${r}`).alignment = { horizontal: "center" };
+
+      ['A', 'B', 'C'].forEach(col => {
+        ws.getCell(`${col}${r}`).border = {
+          top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+          left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+          bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+          right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
+        };
+      });
     });
 
-    // "Biểu đồ doanh thu" dạng bar bằng ký tự (vì exceljs chưa hỗ trợ chèn chart)
-    const chartStart = 8 + daily.length + 2;
-    ws.getCell(`A${chartStart - 1}`).value = "BIỂU ĐỒ DOANH THU";
-    ws.getCell(`A${chartStart - 1}`).font = { bold: true, color: { argb: "FFB8860B" } };
-    const max = Math.max(1, ...daily.map((d) => d.revenue));
-    daily.forEach((d, i) => {
-      const r = chartStart + i;
-      ws.getCell(`A${r}`).value = d.period || `Kỳ ${i + 1}`;
-      const bars = Math.round((d.revenue / max) * 40);
-      ws.getCell(`B${r}`).value = "█".repeat(bars) + ` ${d.revenue.toLocaleString("vi-VN")}₫`;
-      ws.getCell(`B${r}`).font = { color: { argb: "FFB8860B" } };
+    // 🌟 5. Tạo biểu đồ Data Bar chính chủ của Excel vào cột Doanh thu
+    ws.addConditionalFormatting({
+      ref: `B${headerRow + 1}:B${headerRow + daily.length}`,
+      rules: [
+        {
+          type: 'dataBar',
+          cfvo: [{ type: 'min' }, { type: 'max' }],
+          color: { argb: 'FFFBEB8D' }, // Màu vàng nhạt làm nền biểu đồ
+          border: true
+        } as any
+      ]
     });
   }
 
-  ws.getColumn(1).width = 22;
-  ws.getColumn(2).width = 42;
-  ws.getColumn(3).width = 14;
+  // 6. Căn chỉnh độ rộng cột chuẩn
+  ws.getColumn(1).width = 20;
+  ws.getColumn(2).width = 40;
+  ws.getColumn(3).width = 30;
 
   await downloadWb(wb, `bao-cao-doanh-thu_${from}_${to}.xlsx`);
 }
 
-// =============== EXPORT TOP TRACKS ===============
+// =============== EXPORT TOP TRACKS (ĐÃ NÂNG CẤP THẨM MỸ) ===============
 async function exportTopTracks(
   from: string,
   to: string,
   setInfo: (s: string) => void,
 ) {
-  const { data, error } = await melodiseDb.rpc("get_top_selling_tracks", {
+  const { data, error } = await supabase.rpc("get_top_selling_tracks", {
     start_date: from,
     end_date: to,
     limit_count: 100,
   });
   if (error) throw new Error(error.message);
 
-  const rows: TopRow[] = Array.isArray(data) ? data : data ? [data] : [];
-
-  const list = rows.map((r) => ({
-    title: pickString(r, ["title", "track_title", "ten_bai_nhac", "name"]),
-    artist: pickString(r, ["artist", "artist_name", "ten_tac_gia", "author"]),
-    sold: pickNumber(r, ["sold", "quantity", "total_sold", "so_luong", "qty"]),
-    revenue: pickNumber(r, ["revenue", "total_revenue", "doanh_thu", "amount"]),
+  const rows = data || [];
+  const list: { title: string; artist: string; sold: number; revenue: number }[] = rows.map((r: any) => ({
+    title: r.title || "Không rõ",
+    artist: r.artist || "Không rõ", // Đã lấy được dữ liệu thật từ RPC
+    sold: Number(r.total_sold) || 0,
+    revenue: Number(r.total_revenue) || 0,
   }));
-  list.sort((a, b) => b.sold - a.sold);
 
   if (list.length === 0) {
     setInfo("Chưa phát sinh giao dịch nào. Đã xuất file rỗng.");
@@ -353,40 +335,79 @@ async function exportTopTracks(
   const ws = wb.addWorksheet("Nhạc bán chạy");
 
   ws.mergeCells("A1:D1");
-  ws.getCell("A1").value = "BÁO CÁO NHẠC BÁN CHẠY";
+  ws.getCell("A1").value = "BÁO CÁO NHẠC BÁN CHẠY CHI TIẾT";
   ws.getCell("A1").font = { bold: true, size: 16, color: { argb: "FFB8860B" } };
-  ws.getCell("A1").alignment = { horizontal: "center" };
+  ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+  ws.getRow(1).height = 30;
 
-  ws.getCell("A2").value = "Từ ngày:";
-  ws.getCell("B2").value = from;
-  ws.getCell("A3").value = "Đến ngày:";
-  ws.getCell("B3").value = to;
+  ws.getCell("A3").value = "Từ ngày:";
+  ws.getCell("B3").value = from;
+  ws.getCell("A4").value = "Đến ngày:";
+  ws.getCell("B4").value = to;
 
-  const header = ["Tên bài nhạc", "Tên tác giả", "Số lượng đã bán", "Tổng doanh thu (VNĐ)"];
+  const headerRow = 6;
+  const header = ["Tên bài nhạc", "Nghệ sĩ", "Số lượng bán ra", "Tổng doanh thu (VNĐ) + Biểu đồ"];
   header.forEach((h, i) => {
-    const c = ws.getCell(5, i + 1);
-    c.value = h;
-    c.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFB8860B" } };
+    const col = String.fromCharCode(65 + i); // Tương ứng A, B, C, D
+    const cell = ws.getCell(`${col}${headerRow}`);
+    cell.value = h;
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFB8860B" } };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+    cell.border = {
+      top: { style: 'medium', color: { argb: 'FF8B6508' } },
+      left: { style: 'medium', color: { argb: 'FF8B6508' } },
+      bottom: { style: 'medium', color: { argb: 'FF8B6508' } },
+      right: { style: 'medium', color: { argb: 'FF8B6508' } }
+    };
   });
+  ws.getRow(headerRow).height = 25;
 
   if (list.length === 0) {
-    ws.getCell("A6").value = "(Không có dữ liệu)";
+    ws.mergeCells(`A7:D7`);
+    ws.getCell("A7").value = "(Không có dữ liệu)";
+    ws.getCell("A7").alignment = { horizontal: "center" };
   } else {
     list.forEach((t, i) => {
-      const r = 6 + i;
+      const r = headerRow + 1 + i;
       ws.getCell(`A${r}`).value = t.title;
       ws.getCell(`B${r}`).value = t.artist;
+      ws.getCell(`B${r}`).alignment = { horizontal: "center" };
+      
       ws.getCell(`C${r}`).value = t.sold;
+      ws.getCell(`C${r}`).alignment = { horizontal: "center" };
+      
       ws.getCell(`D${r}`).value = t.revenue;
       ws.getCell(`D${r}`).numFmt = '#,##0" ₫"';
+
+      ['A', 'B', 'C', 'D'].forEach(col => {
+        ws.getCell(`${col}${r}`).border = {
+          top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+          left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+          bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+          right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
+        };
+      });
+    });
+
+    // 🌟 Thêm DataBar cho cột doanh thu
+    ws.addConditionalFormatting({
+      ref: `D${headerRow + 1}:D${headerRow + list.length}`,
+      rules: [
+        {
+          type: 'dataBar',
+          cfvo: [{ type: 'min' }, { type: 'max' }],
+          color: { argb: 'FFADD8E6' }, // Màu xanh lơ nhạt
+          border: true
+        } as any
+      ]
     });
   }
 
   ws.getColumn(1).width = 36;
-  ws.getColumn(2).width = 28;
-  ws.getColumn(3).width = 18;
-  ws.getColumn(4).width = 22;
+  ws.getColumn(2).width = 20;
+  ws.getColumn(3).width = 22;
+  ws.getColumn(4).width = 38;
 
   await downloadWb(wb, `bao-cao-nhac-ban-chay_${from}_${to}.xlsx`);
 }

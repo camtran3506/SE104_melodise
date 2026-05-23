@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { Modal } from "@/components/Modal";
-import { Save, Search } from "lucide-react";
+import { Save, Search, Loader2 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { NoPermission } from "@/components/NoPermission";
+import { melodiseDb } from "@/lib/external-supabase";
 
 export const Route = createFileRoute("/_admin/orders")({
   component: OrdersGuard,
@@ -16,106 +17,88 @@ function OrdersGuard() {
   return <OrdersPage />;
 }
 
-type OrderStatus = "Chờ duyệt" | "Đã phê duyệt" | "Hủy đơn";
+type OrderStatus = "Chờ duyệt" | "Đã duyệt" | "Hủy đơn";
 type OrderItem = { title: string; artist: string; price: number };
+
+// Đã dọn dẹp sạch sẽ các trường cấp phép thủ công (licenseCode, licenseTerm...)
 type Order = {
-  id: string;
+  id: string; 
+  realId: string | number; // ID thực tế (hỗ trợ cả BIGINT và UUID)
   customer: string;
   email: string;
   items: OrderItem[];
   total: number;
   status: OrderStatus;
   date: string;
-  licenseCode?: string;
-  licenseScope?: string;
-  licenseTerm?: string;
-  paymentMethod?: string;
-  approver?: string;
-  approveDate?: string;
-  note?: string;
 };
-
-const initialOrders: Order[] = [
-  {
-    id: "OD2026-0142",
-    customer: "Phạm Minh Khôi",
-    email: "khoi@gmail.com",
-    items: [
-      { title: "Sao Sáng", artist: "Lan Anh", price: 25000 },
-      { title: "Đêm Nhung", artist: "Velvet Crew", price: 20000 },
-      { title: "Giai Điệu Vàng", artist: "Minh Khôi", price: 30000 },
-    ],
-    total: 75000,
-    status: "Chờ duyệt",
-    date: "14/05/2026",
-  },
-  {
-    id: "OD2026-0141",
-    customer: "Hà My",
-    email: "hamy@gmail.com",
-    items: [{ title: "Bầu Trời Xanh", artist: "Hà My", price: 18000 }],
-    total: 18000,
-    status: "Đã phê duyệt",
-    date: "14/05/2026",
-    licenseCode: "LIC-0141",
-    licenseScope: "Sử dụng cá nhân",
-    licenseTerm: "12 tháng",
-    paymentMethod: "Chuyển khoản",
-    approver: "Trần Lưu Tuyết Trân",
-    approveDate: "14/05/2026",
-    note: "—",
-  },
-  {
-    id: "OD2026-0140",
-    customer: "Nguyễn Thị Vân Anh",
-    email: "vananh@gmail.com",
-    items: [
-      { title: "Vũ Trụ Của Em", artist: "Starlight", price: 22000 },
-      { title: "Lời Thì Thầm", artist: "Lan Anh", price: 28000 },
-    ],
-    total: 50000,
-    status: "Chờ duyệt",
-    date: "13/05/2026",
-  },
-  {
-    id: "OD2026-0139",
-    customer: "Trần Lan",
-    email: "lan@gmail.com",
-    items: [
-      { title: "Sao Sáng", artist: "Lan Anh", price: 25000 },
-      { title: "Đêm Nhung", artist: "Velvet Crew", price: 20000 },
-      { title: "Giai Điệu Vàng", artist: "Minh Khôi", price: 30000 },
-      { title: "Bầu Trời Xanh", artist: "Hà My", price: 18000 },
-      { title: "Vũ Trụ Của Em", artist: "Starlight", price: 32000 },
-    ],
-    total: 125000,
-    status: "Đã phê duyệt",
-    date: "13/05/2026",
-    licenseCode: "LIC-0139",
-    licenseScope: "Phát sóng nội bộ",
-    licenseTerm: "12 tháng",
-    paymentMethod: "Ví điện tử",
-    approver: "Lê Ngọc Tường Vy",
-    approveDate: "13/05/2026",
-    note: "Khách VIP",
-  },
-  {
-    id: "OD2026-0138",
-    customer: "Đỗ Phan",
-    email: "fan@gmail.com",
-    items: [{ title: "Lời Thì Thầm", artist: "Lan Anh", price: 30000 }],
-    total: 30000,
-    status: "Hủy đơn",
-    date: "12/05/2026",
-  },
-];
 
 const fmt = (n: number) => n.toLocaleString("vi-VN") + "₫";
 
 function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
   const [selected, setSelected] = useState<Order | null>(null);
+
+  // FETCH DATA TỪ DATABASE
+  useEffect(() => {
+    async function fetchOrders() {
+      setLoading(true);
+      try {
+        const [ordersRes, detailsRes, tracksRes, usersRes] = await Promise.all([
+          melodiseDb.from("orders").select("*").order("created_at", { ascending: false }),
+          melodiseDb.from("order_details").select("*"),
+          melodiseDb.from("tracks").select("track_id, title, artist, price"),
+          melodiseDb.from("users").select("*")
+        ]);
+
+        if (ordersRes.error) throw ordersRes.error;
+
+        const dbOrders = ordersRes.data || [];
+        const dbDetails = detailsRes.data || [];
+        const dbTracks = tracksRes.data || [];
+        const dbUsers = usersRes.data || [];
+
+        const mappedOrders: Order[] = dbOrders.map((o: any) => {
+          const user = dbUsers.find((u: any) => u.user_id === o.user_id);
+          const email = user?.email || "Unknown";
+          const customerName = user?.name || user?.full_name || email.split("@")[0] || "Khách";
+
+          const orderItems = dbDetails
+            .filter((d: any) => d.order_id === o.order_id)
+            .map((d: any) => {
+              const track = dbTracks.find((t: any) => t.track_id === d.track_id);
+              return {
+                title: track?.title || "Không rõ",
+                artist: track?.artist || "Không rõ",
+                price: Number(track?.price) || 0
+              };
+            });
+
+          const total = o.total_amount ? Number(o.total_amount) : orderItems.reduce((sum, item) => sum + item.price, 0);
+
+          return {
+            id: o.order_code || `ORD-${o.order_id}`,
+            realId: o.order_id,
+            customer: customerName,
+            email: email,
+            items: orderItems,
+            total: total,
+            status: (o.status as OrderStatus) || "Chờ duyệt",
+            date: new Date(o.created_at).toLocaleDateString("vi-VN"),
+          };
+        });
+
+        setOrders(mappedOrders);
+      } catch (error: any) {
+        toast.error("Không thể tải danh sách đơn hàng: " + error.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchOrders();
+  }, []);
 
   const filtered = useMemo(() => {
     const k = keyword.trim().toLowerCase();
@@ -129,11 +112,58 @@ function OrdersPage() {
     );
   }, [orders, keyword]);
 
-  const handleUpdate = (updated: Order) => {
-    setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
-    toast.success("Cập nhật thành công");
-    setSelected(null);
+  // LƯU TRẠNG THÁI & TỰ ĐỘNG CẤP PHÉP (AUTO-LICENSE)
+  const handleUpdate = async (updated: Order) => {
+    try {
+      // 1. Cập nhật Status vào bảng orders
+      const { error: orderError } = await melodiseDb
+        .from("orders")
+        .update({ status: updated.status })
+        .eq("order_id", updated.realId);
+
+      if (orderError) throw orderError;
+
+      // 2. Logic xử lý bảng licenses tự động với cơ chế kiểm tra lỗi chặt chẽ
+      if (updated.status === "Đã duyệt") {
+        // Thực hiện thêm mới vào bảng licenses
+        const { error: licenseInsertError } = await melodiseDb
+          .from("licenses")
+          .insert({ order_id: updated.realId });
+          
+        // Nếu bị lỗi trùng mã đơn (đã được cấp phép trước đó) thì bỏ qua (mã lỗi 23505), còn lỗi khác thì chặn lại
+        if (licenseInsertError && licenseInsertError.code !== "23505") {
+          throw licenseInsertError;
+        }
+      } else {
+        // Nếu chuyển về trạng thái Hủy đơn hoặc Chờ duyệt -> Tiến hành thu hồi giấy phép
+        const { error: licenseDeleteError } = await melodiseDb
+          .from("licenses")
+          .delete()
+          .eq("order_id", updated.realId);
+          
+        if (licenseDeleteError) throw licenseDeleteError;
+      }
+
+      // Cập nhật lại trạng thái hiển thị trên giao diện local
+      setOrders((prev) => prev.map((o) => (o.realId === updated.realId ? updated : o)));
+      toast.success("Đã cập nhật trạng thái đơn hàng và xử lý cấp phép thành công");
+      setSelected(null);
+    } catch (error: any) {
+      console.error("Lỗi xử lý nghiệp vụ đơn hàng/giấy phép:", error);
+      toast.error("Lỗi hệ thống: " + (error.message || JSON.stringify(error)));
+    }
   };
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Quản lý giao dịch" subtitle="Tra cứu đơn hàng, duyệt và cấp quyền cho khách hàng." />
+        <div className="flex items-center justify-center py-20 text-muted-foreground">
+          <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Đang tải dữ liệu đơn hàng...
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -195,7 +225,7 @@ function OrdersTable({
           </thead>
           <tbody>
             {orders.map((o) => (
-              <tr key={o.id} className="border-b border-border/40 align-top hover:bg-gold/5">
+              <tr key={o.realId} className="border-b border-border/40 align-top hover:bg-gold/5">
                 <td className="px-4 py-3 font-mono text-xs text-gold">{o.id}</td>
                 <td className="px-4 py-3">
                   <div className="font-medium">{o.customer}</div>
@@ -227,7 +257,7 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   return (
     <span
       className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-        status === "Đã phê duyệt"
+        status === "Đã duyệt"
           ? "bg-emerald-500/15 text-emerald-300"
           : status === "Chờ duyệt"
             ? "bg-amber-400/15 text-amber-200"
@@ -249,163 +279,74 @@ function ApprovalForm({
   onSubmit: (o: Order) => void;
 }) {
   const [status, setStatus] = useState<OrderStatus>(order.status);
-  const today = new Date().toLocaleDateString("vi-VN");
-  const [form, setForm] = useState({
-    licenseCode: order.licenseCode ?? `LIC-${order.id.replace("OD", "")}`,
-    licenseScope: order.licenseScope ?? "",
-    licenseTerm: order.licenseTerm ?? "12 tháng",
-    paymentMethod: order.paymentMethod ?? "",
-    approver: order.approver ?? "",
-    approveDate: order.approveDate ?? today,
-    note: order.note ?? "",
-  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const isApprove = status === "Đã phê duyệt";
-  const fieldsFilled =
-    form.licenseCode.trim() &&
-    form.licenseScope.trim() &&
-    form.licenseTerm.trim() &&
-    form.paymentMethod.trim() &&
-    form.approver.trim() &&
-    form.approveDate.trim();
+  // Chỉ cho phép lưu nếu trạng thái thực sự bị thay đổi
+  const isUnchanged = status === order.status;
 
-  let disableReason = "";
-  if (status === "Chờ duyệt") disableReason = "Bạn hãy điều chỉnh trạng thái đơn hàng";
-  else if (isApprove && !fieldsFilled) disableReason = "Bạn hãy điền đầy đủ thông tin";
-
-  const submit = () => {
-    if (disableReason) return;
-    if (status === "Hủy đơn") {
-      onSubmit({
-        ...order,
-        status,
-        licenseCode: undefined,
-        licenseScope: undefined,
-        licenseTerm: undefined,
-        paymentMethod: undefined,
-        approver: undefined,
-        approveDate: undefined,
-        note: undefined,
-      });
-    } else {
-      onSubmit({ ...order, status, ...form });
-    }
+  const submit = async () => {
+    if (isUnchanged) return;
+    setIsSubmitting(true);
+    await onSubmit({ ...order, status });
+    setIsSubmitting(false);
   };
 
   return (
-    <Modal title={`Chi tiết đơn ${order.id}`} onClose={onCancel} size="lg">
-      <div className="space-y-3 text-sm">
-        <div className="rounded-lg border border-border/60 bg-sidebar/40 p-3 text-xs">
-          <div className="grid grid-cols-2 gap-2">
+    <Modal title={`Chi tiết đơn ${order.id}`} onClose={onCancel} size="md">
+      <div className="space-y-4 text-sm">
+        
+        {/* KHỐI THÔNG TIN ĐƠN HÀNG */}
+        <div className="rounded-lg border border-border/60 bg-sidebar/40 p-4 text-sm">
+          <div className="grid grid-cols-2 gap-4">
             <Info label="Khách hàng" value={`${order.customer} — ${order.email}`} />
             <Info label="Tổng tiền" value={fmt(order.total)} />
           </div>
-          <div className="mt-2">
+          <div className="mt-4">
             <Label>Bài hát ({order.items.length})</Label>
-            <ul className="mt-1 space-y-0.5">
+            <ul className="mt-2 space-y-1">
               {order.items.map((it, i) => (
-                <li key={i}>• {it.title} — {it.artist} ({fmt(it.price)})</li>
+                <li key={i} className="text-muted-foreground">
+                  • <span className="font-medium text-canvas">{it.title}</span> — {it.artist} ({fmt(it.price)})
+                </li>
               ))}
             </ul>
           </div>
         </div>
 
-        <Field label="Trạng thái (STT 3)">
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as OrderStatus)}
-            className="input"
-          >
-            <option value="Chờ duyệt">Chờ duyệt</option>
-            <option value="Đã phê duyệt">Duyệt</option>
-            <option value="Hủy đơn">Hủy đơn</option>
-          </select>
-        </Field>
-
-        <fieldset
-          disabled={!isApprove}
-          className={`space-y-3 rounded-lg border border-border/60 p-3 transition ${
-            isApprove ? "bg-gold/5" : "opacity-50"
-          }`}
-        >
-          <div className="text-xs font-semibold uppercase tracking-wider text-gold">
-            Thông tin cấp giấy phép (STT 4 – STT 10)
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="4. Mã giấy phép">
-              <input
-                value={isApprove ? form.licenseCode : ""}
-                onChange={(e) => setForm({ ...form, licenseCode: e.target.value })}
-                className="input"
-              />
-            </Field>
-            <Field label="5. Phạm vi sử dụng">
-              <input
-                value={isApprove ? form.licenseScope : ""}
-                onChange={(e) => setForm({ ...form, licenseScope: e.target.value })}
-                placeholder="Cá nhân / Thương mại / Phát sóng..."
-                className="input"
-              />
-            </Field>
-            <Field label="6. Thời hạn">
-              <input
-                value={isApprove ? form.licenseTerm : ""}
-                onChange={(e) => setForm({ ...form, licenseTerm: e.target.value })}
-                className="input"
-              />
-            </Field>
-            <Field label="7. Phương thức thanh toán">
-              <input
-                value={isApprove ? form.paymentMethod : ""}
-                onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}
-                placeholder="Chuyển khoản / Ví điện tử..."
-                className="input"
-              />
-            </Field>
-            <Field label="8. Người duyệt">
-              <input
-                value={isApprove ? form.approver : ""}
-                onChange={(e) => setForm({ ...form, approver: e.target.value })}
-                className="input"
-              />
-            </Field>
-            <Field label="9. Ngày duyệt">
-              <input
-                value={isApprove ? form.approveDate : ""}
-                onChange={(e) => setForm({ ...form, approveDate: e.target.value })}
-                className="input"
-              />
-            </Field>
-          </div>
-          <Field label="10. Ghi chú">
-            <textarea
-              rows={2}
-              value={isApprove ? form.note : ""}
-              onChange={(e) => setForm({ ...form, note: e.target.value })}
-              className="input"
-            />
+        {/* KHỐI CẬP NHẬT TRẠNG THÁI */}
+        <div className="rounded-lg border border-border/60 p-4">
+          <Field label="Thao tác xét duyệt">
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as OrderStatus)}
+              className="input w-full mt-1.5 font-medium"
+            >
+              <option value="Chờ duyệt">Chờ duyệt</option>
+              <option value="Đã duyệt">Duyệt & Tự động cấp phép</option>
+              <option value="Hủy đơn">Hủy đơn & Thu hồi giấy phép</option>
+            </select>
           </Field>
-        </fieldset>
+          <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
+            Hệ thống sẽ tự động cấp mã bản quyền vĩnh viễn cho khách hàng khi bạn chọn <strong>Phê duyệt</strong>.
+          </p>
+        </div>
 
-        {disableReason && (
-          <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-2 text-xs text-amber-200">
-            {disableReason}
-          </div>
-        )}
-
+        {/* NÚT ĐIỀU KHIỂN */}
         <div className="flex justify-end gap-2 pt-2">
           <button
             onClick={onCancel}
-            className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent/30"
+            disabled={isSubmitting}
+            className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent/30 disabled:opacity-50"
           >
-            Hủy bỏ
+            Đóng
           </button>
           <button
             onClick={submit}
-            disabled={!!disableReason}
+            disabled={isUnchanged || isSubmitting}
             className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-gold to-amber-300 px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[var(--shadow-gold)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Save className="h-4 w-4" /> Cập nhật
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} 
+            {isSubmitting ? "Đang xử lý..." : "Lưu thay đổi"}
           </button>
         </div>
       </div>
@@ -416,7 +357,7 @@ function ApprovalForm({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <div className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-xs font-semibold uppercase tracking-wider text-gold">{label}</div>
       {children}
     </label>
   );
@@ -432,7 +373,7 @@ function Info({ label, value }: { label: string; value?: string }) {
   return (
     <div>
       <Label>{label}</Label>
-      <div className="font-medium">{value || "—"}</div>
+      <div className="font-medium mt-0.5">{value || "—"}</div>
     </div>
   );
 }
