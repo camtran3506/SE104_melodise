@@ -20,12 +20,10 @@ function MusicGuard() {
   return <MusicPage />;
 }
 
-// 🔥 ĐÃ SỬA LỖI TYPESCRIPT: Cho phép price nhận string để trống ô nhập liệu
 type Track = {
   id: string;
   title: string;
-  artist: string;
-  artistId: number | null;
+  artist: string; // Đã giữ lại artist (string), xóa artistId
   category: string;
   categoryIds: number[];
   duration: string; 
@@ -37,7 +35,6 @@ type Track = {
 };
 
 type Category = { id: string; name: string; description: string };
-type Artist = { id: number; name: string };
 
 const fmt = (n: number) => n.toLocaleString("vi-VN") + "₫";
 
@@ -45,7 +42,6 @@ function MusicPage() {
   const [tab, setTab] = useState<"tracks" | "categories" | "trash">("tracks");
   const [tracks, setTracks] = useState<Track[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [artists, setArtists] = useState<Artist[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Phân loại mảng nhạc
@@ -55,26 +51,19 @@ function MusicPage() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [tRes, aRes, cRes, tcRes] = await Promise.all([
+      // Đã xóa query bảng 'artists'
+      const [tRes, cRes, tcRes] = await Promise.all([
         melodiseDb.from("tracks").select("*").order("track_id"),
-        melodiseDb.from("artists").select("*").order("name"),
         melodiseDb.from("categories").select("*").order("category_id"),
         melodiseDb.from("track_categories").select("*"),
       ]);
       
-      if (tRes.error || aRes.error || cRes.error || tcRes.error) {
+      if (tRes.error || cRes.error || tcRes.error) {
         toast.error("Không tải được dữ liệu từ Supabase");
         setLoading(false);
         return;
       }
 
-      const fetchedArtists = (aRes.data ?? []).map((a: any) => ({ 
-        id: a.artist_id, 
-        name: a.name 
-      }));
-      setArtists(fetchedArtists);
-      
-      const artistMap = new Map<number, string>(fetchedArtists.map(a => [a.id, a.name]));
       const catMap = new Map<number, string>((cRes.data ?? []).map((c: any) => [c.category_id, c.category]));
       
       const trackCatNamesMap = new Map<number, string[]>();
@@ -101,8 +90,7 @@ function MusicPage() {
         (tRes.data ?? []).map((t: any) => ({
           id: String(t.track_id),
           title: t.title,
-          artist: t.artist_id ? artistMap.get(t.artist_id) ?? "—" : "—",
-          artistId: t.artist_id,
+          artist: t.artist || "—", // Lấy trực tiếp từ cột artist mới
           category: (trackCatNamesMap.get(t.track_id) ?? []).join(", "),
           categoryIds: trackCatIdsMap.get(t.track_id) ?? [],
           duration: t.duration,
@@ -149,7 +137,6 @@ function MusicPage() {
           tracks={activeTracks}
           setTracks={setTracks}
           categories={categories}
-          artists={artists}
         />
       )}
       
@@ -238,12 +225,11 @@ const deleteOldFileFromSupabase = async (oldUrl: string, purpose: FilePurpose) =
 // TAB 1: NHẠC ĐANG BÁN (TracksTab)
 // ------------------------------------------------------------------
 function TracksTab({
-  tracks, setTracks, categories, artists
+  tracks, setTracks, categories
 }: {
   tracks: Track[];
   setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
   categories: Category[];
-  artists: Artist[];
 }) {
   const [keyword, setKeyword] = useState("");
   const [editing, setEditing] = useState<Track | null>(null);
@@ -270,12 +256,12 @@ function TracksTab({
 
     const dbPayload = {
       title: t.title,
+      artist: t.artist, // Truyền trực tiếp chuỗi artist lên DB
       duration: t.duration,
       price: t.price,
       demo_audio_url: formatPath(t.preview, "public-media", "demos"),
       original_audio_url: formatPath(t.original, "private-vault", ""),
       cover_image_url: formatPath(t.cover, "public-media", "covers"),
-      artist_id: t.artistId, 
     };
 
     let savedTrackId = t.id;
@@ -420,7 +406,6 @@ function TracksTab({
         <TrackForm
           initial={editing} 
           categories={categories} 
-          artists={artists} 
           existingIds={tracks.map((t) => t.id)}
           onCancel={() => { setEditing(null); setCreating(false); }} 
           onSubmit={handleSave}
@@ -566,11 +551,10 @@ function TrashTab({
 // CÁC COMPONENT FORM & MODAL DÙNG CHUNG
 // ------------------------------------------------------------------
 function TrackForm({
-  initial, categories, artists, existingIds, onCancel, onSubmit
+  initial, categories, existingIds, onCancel, onSubmit
 }: {
   initial: Track | null; 
   categories: Category[]; 
-  artists: Artist[]; 
   existingIds: string[];
   onCancel: () => void; 
   onSubmit: (t: Track) => void;
@@ -589,11 +573,10 @@ function TrackForm({
       id: nextId, 
       title: "", 
       artist: "", 
-      artistId: null, 
       category: "", 
       categoryIds: [], 
       duration: "", 
-      price: "", // 🔥 Khởi tạo rỗng chuẩn xác
+      price: "", 
       preview: "", 
       original: "", 
       isDeleted: false
@@ -625,8 +608,8 @@ function TrackForm({
   };
 
   const submit = async () => {
-    if (!form.id?.trim() || !form.title?.trim() || !form.duration?.trim()) { 
-      setError("Vui lòng nhập đầy đủ Tên bài hát và Thời lượng."); 
+    if (!form.id?.trim() || !form.title?.trim() || !form.duration?.trim() || !form.artist?.trim()) { 
+      setError("Vui lòng nhập đầy đủ Mã, Tên bài hát, Tác giả và Thời lượng."); 
       return; 
     }
     
@@ -717,20 +700,14 @@ function TrackForm({
         
         <div className="grid grid-cols-2 gap-4">
           <Field label="Tác giả">
-            <select 
-              value={form.artistId || ""} 
-              onChange={(e) => { 
-                const id = Number(e.target.value); 
-                const a = artists.find(x => x.id === id); 
-                setForm({ ...form, artistId: id, artist: a ? a.name : "" }); 
-              }} 
+            {/* Đổi thành thẻ Input vì không còn query từ bảng nữa */}
+            <input 
+              type="text"
+              value={form.artist} 
+              onChange={(e) => setForm({ ...form, artist: e.target.value })} 
+              placeholder="Nhập tên tác giả..."
               className="input"
-            >
-              <option value="" disabled>-- Chọn tác giả --</option>
-              {artists.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
+            />
           </Field>
           
           <Field label="Danh mục (Có thể chọn nhiều)">
