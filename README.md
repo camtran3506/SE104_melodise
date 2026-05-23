@@ -1,83 +1,70 @@
-# 🎵 Melodise Admin
+# 🎵 Melodise — Nền tảng Giao dịch Nhạc số Bản quyền
 
-Phân hệ quản trị cho website **Melodise** — nền tảng quản lý và kinh doanh nhạc số trực tuyến.
+Chào mừng bạn đến với **Melodise**, một hệ thống thương mại điện tử chuyên biệt dành riêng cho việc khám phá, mua sắm và quản lý bản quyền âm nhạc kỹ thuật số chất lượng cao. 
 
-Concept thiết kế: **Velvet Blue + Gold Twinkling Stars** ✨ với hiệu ứng sao lấp lánh, nốt nhạc bay và texture nhung mềm mại.
-
-## ✨ Tính năng
-
-- 🔐 **Đăng nhập** quản trị viên / nhân viên
-- 📊 **Dashboard** tổng quan: thống kê, hoạt động gần đây
-- 👥 **Quản lý tài khoản**: thêm / sửa / xóa, phân quyền
-- 🎶 **Quản lý nhạc số**: bài hát, danh mục, giá bán
-- 🛒 **Đơn hàng & Cấp quyền**: duyệt thanh toán
-- 📈 **Báo cáo**: doanh thu theo tháng, top bài bán chạy
-
-## 🚀 Chạy local trên VSCode
-
-### Yêu cầu
-- [Node.js](https://nodejs.org/) >= 20
-- [Bun](https://bun.sh) (khuyến nghị) **hoặc** npm / pnpm
-
-### Cài đặt
-```bash
-# Clone về máy
-git clone <your-repo-url>
-cd melodise-admin
-
-# Cài dependencies
-bun install
-# hoặc: npm install
-
-# Chạy dev server
-bun dev
-# hoặc: npm run dev
-```
-
-Mở trình duyệt tại 👉 http://localhost:8080
-
-### Build production
-```bash
-bun run build
-bun run start
-```
-
-## 📁 Cấu trúc thư mục
-```
-src/
-├── routes/                # File-based routing (TanStack Router)
-│   ├── __root.tsx         # Root layout
-│   ├── login.tsx          # /login
-│   ├── _admin.tsx         # Layout có sidebar
-│   ├── _admin.index.tsx   # / (Dashboard)
-│   ├── _admin.accounts.tsx
-│   ├── _admin.music.tsx
-│   ├── _admin.orders.tsx
-│   └── _admin.reports.tsx
-├── components/
-│   ├── AdminLayout.tsx    # Sidebar + main
-│   ├── StarField.tsx      # Sao lấp lánh + nốt nhạc
-│   └── PageHeader.tsx
-└── styles.css             # Design system (oklch tokens)
-```
-
-## 🎨 Design tokens
-Mở `src/styles.css`:
-- `--background` — velvet blue sâu
-- `--gold` — vàng sao lấp lánh
-- `--gradient-velvet` — radial gradient nhung
-- `--animate-twinkle`, `--animate-float-note` — animation
-
-## 📤 Đẩy lên GitHub
-```bash
-git init
-git add .
-git commit -m "Initial commit: Melodise admin"
-git branch -M main
-git remote add origin https://github.com/<username>/melodise-admin.git
-git push -u origin main
-```
+Dự án được thiết kế với sự đồng nhất về mặt trải nghiệm người dùng, chia làm hai phân hệ hoạt động độc lập nhưng liên kết chặt chẽ với nhau thông qua cơ sở dữ liệu chung.
 
 ---
-Made with ✨ by nhóm SE104.Q28
 
+## 🧩 Cấu trúc Hệ thống
+
+Dự án bao gồm 2 phân hệ chính (Multi-repo structure):
+
+### 1. 🎧 Phân hệ Khách hàng (`/front-office`)
+Nơi người dùng cuối trải nghiệm và mua sắm các tác phẩm âm nhạc.
+- **Khám phá:** Tìm kiếm, lọc bài hát theo danh mục, nghe thử bản demo (có watermark).
+- **Giao dịch:** Quản lý giỏ hàng và tiến hành thanh toán an toàn.
+- **Thư viện cá nhân:** Tải xuống và thưởng thức bản nhạc gốc (.mp3, .wav) chất lượng cao sau khi mua thành công.
+- **Tài khoản:** Quản lý hồ sơ và lịch sử giao dịch cá nhân.
+
+### 2. ⚙️ Phân hệ Quản trị (`/back-office`)
+Nơi ban quản trị và nhân viên vận hành toàn bộ hệ thống Melodise.
+- **Quản lý Nhạc số:** Thêm mới bài hát, upload tệp tin âm thanh/ảnh bìa, cập nhật giá và phân loại danh mục.
+- **Quản lý Tài khoản:** Kiểm soát người dùng, phân quyền nhân viên/quản trị viên.
+- **Đơn hàng:** Theo dõi, duyệt và xử lý các giao dịch mua nhạc.
+- **Báo cáo & Thống kê:** Theo dõi doanh thu tổng quan, xác định top bài hát bán chạy.
+
+---
+
+## 🛠 Tech Stack (Công nghệ sử dụng)
+
+- **Core:** React, Vite
+- **Routing:** TanStack Router (File-based routing)
+- **Styling:** CSS Variables (Oklch tokens), Tailwind CSS, Glassmorphism UI
+- **Backend & Database:** Supabase (PostgreSQL, Storage, Auth)
+- **Package Manager:** `bun` (hoặc `npm`)
+
+---
+
+## 🚀 Hướng dẫn khởi chạy dự án (Local Development)
+
+Để chạy dự án trên máy tính cá nhân, bạn cần mở **2 terminal** riêng biệt cho từng phân hệ.
+
+### Bước 1: Clone dự án
+```bash
+git clone <your-repo-url>
+cd <your-folder-name>
+```
+
+### Bước 2: Khởi chạy Client (Front-Office)
+*Yêu cầu đã cài đặt [Bun](https://bun.sh/).*
+```bash
+cd front-office
+bun install
+bun run dev
+```
+👉 Truy cập giao diện khách hàng tại: `http://localhost:5173`
+
+### Bước 3: Khởi chạy Admin (Back-Office)
+*Yêu cầu đã cài đặt [Node.js & npm](https://nodejs.org/).*
+```bash
+cd back-office
+npm install
+npm run dev
+```
+👉 Truy cập giao diện quản trị tại: `http://localhost:8080` (hoặc port tương ứng hiển thị trên terminal).
+
+---
+
+## 👥 Đội ngũ phát triển
+Dự án được xây dựng và phát triển bởi **Nhóm 9 - SE104.Q28**.
