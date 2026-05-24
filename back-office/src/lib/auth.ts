@@ -33,7 +33,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 export const PERMISSIONS: Record<Role, string[]> = {
   admin: ["accounts", "music", "orders", "reports"],
   producer: ["music"],
-  sales: ["music", "reports"],
+  sales: ["music", "reports", "orders"],
 };
 
 export function hasPermission(user: AuthUser | null, tab: string): boolean {
