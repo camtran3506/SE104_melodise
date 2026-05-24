@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { ROLES } from "@/lib/constants";
 
 export const Route = createFileRoute("/auth")({
   component: Auth,
@@ -53,10 +54,9 @@ function Auth() {
             data: {
               name: name,
               phone: phone,
-              role: "Khách hàng", 
-              password: password // <--- BẮT BUỘC THÊM DÒNG NÀY ĐỂ TRIGGER NHẬN ĐƯỢC
-            }
-          }
+              role: ROLES.CUSTOMER,
+            },
+          },
         });
 
         if (error) {
@@ -69,10 +69,38 @@ function Auth() {
           return toast.error("Lỗi đăng ký: " + (error.message || "Vui lòng thử lại sau"));
         }
 
-        // Đăng ký thành công
-        toast.success("Tạo tài khoản thành công");
-        setTab("login"); // Chuyển về tab đăng nhập
-        setPassword(""); // Xóa trắng ô password
+        if (!data.user?.id) {
+          return toast.error("Lỗi đăng ký: Không thể tạo tài khoản");
+        }
+
+        const { data: insertData, error: insertError } = await (supabase as any)
+          .from("users")
+          .insert([
+            {
+              email: email,
+              full_name: name,
+              phone_number: phone,
+              role: ROLES.CUSTOMER,
+              auth_id: data.user.id,
+            },
+          ])
+          .select("user_id")
+          .single();
+
+        if (insertError) {
+          return toast.error("Có lỗi xảy ra khi tạo tài khoản: " + insertError.message);
+        }
+
+        login({
+          id: insertData.user_id,
+          name: name,
+          email: email,
+          phone: phone,
+          role: ROLES.CUSTOMER,
+        });
+
+        toast.success("Tạo tài khoản thành công!");
+        navigate({ to: "/" });
 
       } catch (err) {
         toast.error("Lỗi kết nối đến máy chủ khi đăng ký");
@@ -96,23 +124,32 @@ function Auth() {
           return toast.error("Email hoặc mật khẩu không chính xác");
         }
 
-        // Lấy thông tin role từ metadata (đã được lưu ở bước đăng ký)
-        const userRoleFromDB = data.user?.user_metadata?.role || "Khách hàng"; 
+        // Lấy thông tin user từ bảng users (dùng auth_id)
+        const { data: userData, error: userError } = await (supabase as any)
+          .from("users")
+          .select("user_id, full_name, phone_number, role, email")
+          .eq("auth_id", data.user.id)
+          .single();
+
+        if (userError || !userData) {
+          return toast.error("Không tìm thấy thông tin tài khoản");
+        }
 
         // Kiểm tra phân quyền: Chặn nếu không phải Khách hàng
-        if (userRoleFromDB !== "Khách hàng") {
-          await supabase.auth.signOut(); // Bắt buộc đăng xuất phiên làm việc vừa tạo
+        if (userData.role !== ROLES.CUSTOMER) {
+          await supabase.auth.signOut();
           return toast.error("Tài khoản này không có quyền truy cập vào trang mua sắm!");
         }
 
-        // Đăng nhập thành công: Cập nhật state (phiên làm việc) của ứng dụng
-        login({ 
-          name: data.user?.user_metadata?.name || email.split("@")[0], 
-          email: data.user?.email || email, 
-          phone: data.user?.user_metadata?.phone || "", 
-          role: userRoleFromDB 
+        // Đăng nhập thành công: Cập nhật state với dữ liệu từ DB
+        login({
+          id: userData.user_id,
+          name: userData.full_name || email.split("@")[0],
+          email: userData.email || email,
+          phone: userData.phone_number || "",
+          role: userData.role,
         });
-        
+
         toast.success("Đăng nhập thành công!");
         navigate({ to: "/" });
 

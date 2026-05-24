@@ -4,6 +4,7 @@ import { Download, FileText, FolderOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import type { License } from "@/lib/store";
 
 export const Route = createFileRoute("/library")({
   component: Library,
@@ -20,15 +21,6 @@ type Track = {
   cover: string;
   file_path: string;
   price: number;
-};
-
-type License = {
-  license_id: string;
-  order_id: string;
-  license_code: string;    // Phải khớp tên này
-  license_scope: string;
-  license_term: string;
-  issued_at: string;
 };
 
 type Order = {
@@ -79,12 +71,14 @@ function Library() {
 
             (supabase as any).from("order_details").select("*"),
 
-            (supabase as any).from("tracks").select("*"),
+            (supabase as any).from("tracks").select("*").eq("is_deleted", false),
 
             (supabase as any).from("licenses").select("*"),
           ]);
 
         if (ordersRes.error) throw ordersRes.error;
+        if (detailsRes.error) throw detailsRes.error;
+        if (tracksRes.error) throw tracksRes.error;
         if (licensesRes.error) throw licensesRes.error;
 
         const dbOrders = ordersRes.data || [];
@@ -92,12 +86,7 @@ function Library() {
         const dbTracks = tracksRes.data || [];
         const dbLicenses = licensesRes.data || [];
 
-        console.log("-> 📦 Đơn hàng:", ordersRes.data);
-        console.log("-> 📜 Giấy phép:", licensesRes.data);
-        console.log("-> 📊 dbLicenses length:", dbLicenses.length, dbLicenses);
-
         const mappedOrders: Order[] = dbOrders.map((o: any) => {
-          console.log("-> 🔍 Raw order object:", o);
 
           const orderItems = dbDetails
             .filter((d: any) => d.order_id === o.order_id)
@@ -140,14 +129,6 @@ function Library() {
           const orderLicense = dbLicenses.find((l: any) =>
             String(l.order_id ?? "").trim() === String(o.order_id ?? "").trim()
           );
-
-          if (!orderLicense) {
-            console.warn(`⚠️ Không tìm thấy license cho order ${o.order_id}`);
-            console.log("  dbLicenses:", dbLicenses.map((l: { order_id: any; }) => l.order_id));
-          }
-
-          // Debug: Kiểm tra order.license
-          console.log(`-> 🔎 Order ${o.order_id}:`, { found: !!orderLicense, license: orderLicense });
 
           const finalTotal = orderItems.reduce(
             (sum: number, item: any) => sum + item.price,
@@ -246,16 +227,7 @@ function Library() {
   };
 
   const handleDownloadLicense = (order: Order, track: Track) => {
-    // 1. Kiểm tra log xem order thực sự có license chưa
-    console.log("-> 🔍 Kiểm tra giấy phép của đơn hàng:", order);
-
-    // 2. Tìm kiếm cưỡng bức: Tìm thẳng trong danh sách đơn nếu biến order.license bị thiếu
     const licenseData = order.license;
-
-    console.log("-> 📋 License data:", licenseData);
-    if (!licenseData) {
-      console.error("❌ LỖI: order.license là undefined/null", { orderId: order.realId });
-    }
 
     if (!licenseData || !licenseData.license_code) {
       toast.error("Không tìm thấy thông tin giấy phép! Hãy kiểm tra xem đơn hàng đã ở trạng thái 'Đã duyệt' chưa.");

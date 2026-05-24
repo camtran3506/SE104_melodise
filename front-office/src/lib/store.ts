@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { ROLES, type UserRole } from "./constants";
 
 export type Track = {
   id: string;
@@ -24,25 +25,32 @@ export function setTracksCache(arr: Track[]) {
 }
 
 type CartItem = { trackId: string };
-// Trong store.ts, thêm cấu trúc này vào:
+
 export type License = {
+  license_id: string;
+  order_id: string;
   license_code: string;
   license_scope: string;
   license_term: string;
   issued_at: string;
 };
 
-// Cập nhật type Order trong store.ts
-type Order = { 
-  id: string; 
-  trackIds: string[]; 
-  total: number; 
-  createdAt: number; 
-  status: "pending" | "approved"; 
-  licenses?: License[]; // <--- BẮT BUỘC THÊM DÒNG NÀY
+type Order = {
+  id: string;
+  trackIds: string[];
+  total: number;
+  createdAt: number;
+  status: "pending" | "approved";
+  licenses?: License[];
 };
 
-type User = { name: string; email: string; phone: string; role: "Khách hàng" | "Nhân viên Sản xuất" | "Quản lý cấp cao" | "Nhân viên Kinh doanh" };
+type User = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  role: UserRole;
+};
 
 type Store = {
   user: User | null;
