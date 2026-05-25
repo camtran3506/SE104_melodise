@@ -70,9 +70,10 @@ function Checkout() {
       if (orderError) throw orderError;
 
       // BƯỚC 3: Lưu vào bảng order_details
+      // Tạo một mảng chứa dữ liệu của tất cả bài hát để insert 1 lần duy nhất cho tối ưu
       const detailsToInsert = order.trackIds.map((trackId) => ({
         order_id: newOrder.order_id,
-        track_id: parseInt(trackId, 10),
+        track_id: trackId
       }));
 
       const { error: detailsError } = await (supabase as any)
