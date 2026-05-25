@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { ROLES, type UserRole } from "./constants";
 
 export type Track = {
   id: string;
@@ -25,24 +24,7 @@ export function setTracksCache(arr: Track[]) {
 }
 
 type CartItem = { trackId: string };
-
-export type License = {
-  license_id: string;
-  order_id: string;
-  license_code: string;
-  license_scope: string;
-  license_term: string;
-  issued_at: string;
-};
-
-type Order = {
-  id: string;
-  trackIds: string[];
-  total: number;
-  createdAt: number;
-  status: "pending" | "approved";
-  licenses?: License[];
-};
+type Order = { id: string; trackIds: string[]; total: number; createdAt: number; status: "pending" | "approved" };
 
 type User = {
   id: number;
