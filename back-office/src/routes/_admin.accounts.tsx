@@ -12,7 +12,6 @@ export const Route = createFileRoute("/_admin/accounts")({
   component: AccountsGuard,
 });
 
-// Thêm định nghĩa này vào để TypeScript hiểu AccountFormData là gì
 export type AccountFormData = Account & {
   password?: string;
 };
@@ -22,10 +21,8 @@ function AccountsGuard() {
   return <AccountsPage />;
 }
 
-// Sửa lại Type này cho giống Y HỆT kết quả câu lệnh SQL phía trên trả về
 type Role = "Quản lý cấp cao" | "Nhân viên Sản xuất" | "Nhân viên Kinh doanh" | "Khách hàng";
 
-// Khai báo chuẩn theo Database
 type Account = {
   user_id: number;    
   auth_id: string;
@@ -34,7 +31,7 @@ type Account = {
   email: string;
   password: string;
   role: Role;
-  created_at?: string;       // MỚI: Thêm ngày tạo
+  created_at?: string;
 };
 
 function AccountsPage() {
@@ -51,11 +48,9 @@ function AccountsPage() {
     (async () => {
       setLoading(true);
 
-      // THÊM 2 DÒNG NÀY ĐỂ BẮT BỆNH:
       const { data: authData } = await melodiseDb.auth.getUser();
       console.log("Tài khoản đang gọi Data là:", authData.user ? authData.user.email : "KHÁCH LẠ (CHƯA ĐĂNG NHẬP)");
       
-      // 1. SỬA LẠI LỆNH SELECT: Bỏ 'status', thêm 'phone_number' cho đúng database
       const { data, error } = await melodiseDb
         .from("users")
         .select("user_id, full_name, phone_number, email, role, created_at, auth_id")
@@ -69,16 +64,12 @@ function AccountsPage() {
         return;
       }
 
-      // 2. SỬA LẠI LOGIC MAP (Biến đổi dữ liệu)
       const mapped: Account[] = data.map((u: any) => {
         return {
           user_id: u.user_id,
           full_name: u.full_name ?? "(chưa cập nhật)",
           phone_number: u.phone_number ?? "",
           email: u.email ?? "",
-          
-          // Lấy trực tiếp từ Database, ép kiểu sang Role. 
-          // Nếu dữ liệu bị trống (null), tự động gán là "Khách hàng"
           role: (u.role as Role) ?? "Khách hàng", 
           password: u.password, 
           created_at: u.created_at,
@@ -105,147 +96,137 @@ function AccountsPage() {
   }, [accounts, keyword, roleFilter]);
 
   const handleSave = async (formData: Account) => {
-  setLoading(true); // Giả sử bạn có biến state loading để hiện icon xoay xoay
+    setLoading(true); 
 
-  const parseServerError = async (error: any) => {
-    try {
-      let errorMsg = "";
-      let errorCode = "";
+    const parseServerError = async (error: any) => {
+      try {
+        let errorMsg = "";
+        let errorCode = "";
 
-      // 1. Trích xuất lỗi thực tế được giấu trong error.context của Supabase SDK
-      if (error.context && typeof error.context.json === 'function') {
-        try {
-          const jsonBody = await error.context.json();
-          errorMsg = jsonBody.error || "";
-          errorCode = jsonBody.code || "";
-        } catch (e) {
+        if (error.context && typeof error.context.json === 'function') {
           try {
-            errorMsg = await error.context.text();
-          } catch (txtErr) {}
+            const jsonBody = await error.context.json();
+            errorMsg = jsonBody.error || "";
+            errorCode = jsonBody.code || "";
+          } catch (e) {
+            try {
+              errorMsg = await error.context.text();
+            } catch (txtErr) {}
+          }
         }
+
+        if (!errorMsg && error.message) {
+          errorMsg = error.message;
+          try {
+            const parsed = JSON.parse(error.message);
+            errorMsg = parsed.error || errorMsg;
+            errorCode = parsed.code || errorCode;
+          } catch (e) {}
+        }
+
+        const lowMsg = errorMsg.toLowerCase();
+        const lowCode = errorCode.toLowerCase();
+
+        if (
+          lowCode === 'email_exists' || 
+          lowCode === '23505' || 
+          lowMsg.includes("already been registered") || 
+          lowMsg.includes("already exists") ||
+          lowMsg.includes("email_exists")
+        ) {
+          return new Error("Email đã được sử dụng");
+        }
+
+        return new Error(errorMsg || "Có lỗi xảy ra từ hệ thống, vui lòng thử lại.");
+
+      } catch (e) {
+        return new Error("Có lỗi xảy ra trong quá trình xử lý phản hồi từ hệ thống.");
+      }
+    };
+    
+    try {
+      if (editing) {
+        const { data: updatedUser, error } = await melodiseDb.functions.invoke('update-admin-user', {
+          body: {
+            auth_id: formData.auth_id,       
+            user_id: formData.user_id,       
+            email: formData.email,
+            password: formData.password,     
+            full_name: formData.full_name,
+            phone_number: formData.phone_number,
+            role: formData.role
+          }
+        });
+
+        if (error) throw error;
+
+        setAccounts((prev) => prev.map((a) => (a.user_id === formData.user_id ? updatedUser : a)));
+        toast.success("Cập nhật tài khoản thành công");
+
+      } else {
+        const { data: newUser, error } = await melodiseDb.functions.invoke('create-admin-user', {
+          body: {
+            email: formData.email,
+            password: formData.password, 
+            full_name: formData.full_name,
+            phone_number: formData.phone_number,
+            role: formData.role
+          }
+        });
+
+        if (error) {
+          throw await parseServerError(error);
+        }
+
+        setAccounts((prev) => [...prev, newUser]);
+        toast.success("Thêm tài khoản thành công");
       }
 
-      // Nếu context trống, bới thêm trong error.message đề phòng chuỗi JSON thô
-      if (!errorMsg && error.message) {
-        errorMsg = error.message;
-        try {
-          const parsed = JSON.parse(error.message);
-          errorMsg = parsed.error || errorMsg;
-          errorCode = parsed.code || errorCode;
-        } catch (e) {}
-      }
+      setEditing(null);
+      setCreating(false);
 
-      const lowMsg = errorMsg.toLowerCase();
-      const lowCode = errorCode.toLowerCase();
-
-      // 2. CHỈ TẬP TRUNG XỬ LÝ LỖI TRÙNG EMAIL (Từ cả Auth Server lẫn Postgres Constraint)
-      if (
-        lowCode === 'email_exists' || 
-        lowCode === '23505' || 
-        lowMsg.includes("already been registered") || 
-        lowMsg.includes("already exists") ||
-        lowMsg.includes("email_exists")
-      ) {
-        return new Error("Email đã được sử dụng");
-      }
-
-      // Nếu lọt ra lỗi Database/Hệ thống khác, hiện thông báo lỗi gốc để Admin dễ debug
-      return new Error(errorMsg || "Có lỗi xảy ra từ hệ thống, vui lòng thử lại.");
-
-    } catch (e) {
-      return new Error("Có lỗi xảy ra trong quá trình xử lý phản hồi từ hệ thống.");
+    } catch (error: any) {
+      console.error("Lỗi lưu dữ liệu:", error);
+      toast.error(error.message || "Có lỗi xảy ra, vui lòng thử lại");
+    } finally {
+      setLoading(false);
     }
   };
-  
-  try {
-    if (editing) {
-      // --- TRƯỜNG HỢP 1: CẬP NHẬT (SỬA) ---
-      // Sửa thông tin profile thì không cần Edge Function, gọi thẳng DB cho nhanh
-      const { data: updatedUser, error } = await melodiseDb.functions.invoke('update-admin-user', {
-        body: {
-          auth_id: formData.auth_id,       // Bắt buộc để tìm bên Auth
-          user_id: formData.user_id,       // Bắt buộc để tìm bên bảng users
-          email: formData.email,
-          password: formData.password,     // Nếu người dùng không nhập mật khẩu mới, Edge Function sẽ tự bỏ qua
-          full_name: formData.full_name,
-          phone_number: formData.phone_number,
-          role: formData.role
+
+  const handleDelete = (acc: Account) => {
+    // THÊM BẢO VỆ Ở TẦNG LOGIC: Từ chối thao tác xóa nếu là Khách hàng
+    if (acc.role === "Khách hàng") {
+      toast.error("Không thể xóa tài khoản Khách hàng để bảo toàn dữ liệu liên quan.");
+      return;
+    }
+    setDeleting(acc); 
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setLoading(true);
+
+    try {
+      const { error } = await melodiseDb.functions.invoke('delete-admin-user', {
+        body: { 
+          auth_id: deleting.auth_id, 
+          user_id: deleting.user_id  
         }
       });
 
       if (error) throw error;
 
-      // Cập nhật lại State UI bằng dữ liệu sạch, mới nhất do Edge Function trả về
-      setAccounts((prev) => prev.map((a) => (a.user_id === formData.user_id ? updatedUser : a)));
-      toast.success("Cập nhật tài khoản thành công");
+      setAccounts((prev) => prev.filter((a) => a.user_id !== deleting.user_id));
+      toast.success("Đã xóa tài khoản thành công");
 
-    } else {
-      // --- TRƯỜNG HỢP 2: THÊM MỚI (DÙNG EDGE FUNCTION) ---
-      // Gọi đến cái function 'create-admin-user' mà mình vừa tạo trên Dashboard
-      const { data: newUser, error } = await melodiseDb.functions.invoke('create-admin-user', {
-        body: {
-          email: formData.email,
-          password: formData.password, // Nhớ lấy password từ form nhé
-          full_name: formData.full_name,
-          phone_number: formData.phone_number,
-          role: formData.role
-        }
-      });
-
-      if (error) {
-        throw await parseServerError(error);
-      }
-
-      // newUser ở đây là dữ liệu thật từ DB trả về (đã có user_id và auth_id)
-      setAccounts((prev) => [...prev, newUser]);
-      toast.success("Thêm tài khoản thành công");
+    } catch (err: any) {
+      console.error("Lỗi khi xóa tài khoản:", err);
+      toast.error("Không thể xóa: " + (err.message || "Có lỗi xảy ra"));
+    } finally {
+      setLoading(false);
+      setDeleting(null);
     }
-
-    // Đóng các modal sau khi thành công
-    setEditing(null);
-    setCreating(false);
-
-  } catch (error: any) {
-    console.error("Lỗi lưu dữ liệu:", error);
-    toast.error(error.message || "Có lỗi xảy ra, vui lòng thử lại");
-  } finally {
-    setLoading(false);
-  }
-};
-
-// 1. Hàm này giờ sẽ nhận nguyên Object Account
-const handleDelete = (acc: Account) => {
-  setDeleting(acc); 
-};
-
-// 2. Hàm xác nhận xóa
-const confirmDelete = async () => {
-  if (!deleting) return;
-  setLoading(true);
-
-  try {
-    // 🔥 THAY ĐỔI: Gọi Edge Function xóa thay vì gọi trực tiếp vào Table
-    const { error } = await melodiseDb.functions.invoke('delete-admin-user', {
-      body: { 
-        auth_id: deleting.auth_id, // Gửi UUID sang để xóa bên Auth
-        user_id: deleting.user_id  // Gửi ID số sang để xóa bên Public
-      }
-    });
-
-    if (error) throw error;
-
-    // Lọc bỏ Account có user_id trùng với người vừa xóa khỏi State UI
-    setAccounts((prev) => prev.filter((a) => a.user_id !== deleting.user_id));
-    toast.success("Đã xóa tài khoản thành công");
-
-  } catch (err: any) {
-    console.error("Lỗi khi xóa tài khoản:", err);
-    toast.error("Không thể xóa: " + (err.message || "Có lỗi xảy ra"));
-  } finally {
-    setLoading(false);
-    setDeleting(null);
-  }
-};
+  };
 
   return (
     <>
@@ -332,7 +313,6 @@ const confirmDelete = async () => {
                         {a.role}
                       </span>
                     </td>
-                    {/* ĐÃ XÓA KHỐI CODE HIỂN THỊ STATUS Ở ĐÂY ĐỂ HẾT BÁO LỖI ĐỎ */}
                     <td className="px-3 py-3">
                       <div className="flex justify-end gap-1">
                         <button
@@ -342,13 +322,17 @@ const confirmDelete = async () => {
                         >
                           <Edit2 className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => setDeleting(a)}
-                          className="rounded-md p-1.5 text-muted-foreground transition hover:bg-destructive/20 hover:text-destructive-foreground"
-                          title="Xóa"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        
+                        {/* THÊM BẢO VỆ Ở GIAO DIỆN: Ẩn nút xóa nếu là Khách hàng */}
+                        {a.role !== "Khách hàng" && (
+                          <button
+                            onClick={() => handleDelete(a)}
+                            className="rounded-md p-1.5 text-muted-foreground transition hover:bg-destructive/20 hover:text-destructive-foreground"
+                            title="Xóa"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -362,7 +346,7 @@ const confirmDelete = async () => {
       {(editing || creating) && (
         <AccountForm
           initial={editing}
-          existingIds={accounts.map((a) => a.user_id.toString())} // ĐÃ THÊM .toString() ĐỂ TRÁNH LỖI KIỂU DỮ LIỆU
+          existingIds={accounts.map((a) => a.user_id.toString())} 
           onCancel={() => {
             setEditing(null);
             setCreating(false);
@@ -377,9 +361,6 @@ const confirmDelete = async () => {
             Bạn có chắc chắn muốn xóa tài khoản{" "}
             <strong className="text-gold">{deleting.full_name}</strong> (
             <span className="font-mono text-xs">{deleting.user_id}</span>)?
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Hệ thống sẽ kiểm tra ràng buộc toàn vẹn và ngắt liên kết các dữ liệu liên quan (gán Null) nếu cần.
           </p>
           <div className="mt-4 flex justify-end gap-2">
             <button
@@ -403,14 +384,14 @@ const confirmDelete = async () => {
 
 function AccountForm({
   initial,
-  existingIds, // Biến này không dùng nữa nhưng giữ lại không sao
+  existingIds, 
   onCancel,
   onSubmit,
 }: {
   initial: Account | null;
   existingIds: string[];
   onCancel: () => void;
-  onSubmit: (a: AccountFormData) => void; // LƯU Ý: Sửa thành AccountFormData
+  onSubmit: (a: AccountFormData) => void; 
 }) {
   const [form, setForm] = useState<AccountFormData>(
     initial ?? {
@@ -419,14 +400,13 @@ function AccountForm({
       phone_number: "",
       email: "",
       role: "Khách hàng",
-      password: "", // Sẵn sàng để nhập pass
-      auth_id: "", // Mặc dù auth_id sẽ do hệ thống tạo ra, nhưng để tránh lỗi undefined khi dùng chung form, ta vẫn khai báo ở đây.
+      password: "", 
+      auth_id: "", 
     },
   );
   const [error, setError] = useState("");
 
   const submit = () => {
-    // Kiểm tra các trường bắt buộc
     if (!form.full_name.trim() || !form.email.trim()) {
       setError("Yêu cầu nhập đầy đủ Họ tên và Email");
       return;
@@ -444,13 +424,12 @@ function AccountForm({
       return;
     }
     
-    // THÊM KIỂM TRA MẬT KHẨU KHI THÊM MỚI
     if (!initial && (!form.password || form.password.length < 6)) {
       setError("Vui lòng nhập mật khẩu (tối thiểu 6 ký tự)");
       return;
     }
 
-    setError(""); // Xóa lỗi cũ nếu có
+    setError(""); 
     onSubmit(form);
   };
 
@@ -461,7 +440,6 @@ function AccountForm({
     >
       <div className="space-y-3 text-sm">
         
-        {/* Mã tài khoản (Chỉ hiện khi sửa) */}
         {initial && (
           <Field label="Mã tài khoản (User ID)">
             <input
@@ -490,14 +468,13 @@ function AccountForm({
         <Field label="Email">
           <input
             type="email"
-            disabled={!!initial} // THÊM TÍNH NĂNG: Không cho sửa Email nếu đã tạo (Tránh lỗi mất đồng bộ với bảng Auth)
+            disabled={!!initial} 
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             className={`input ${initial ? 'bg-input/20 cursor-not-allowed opacity-70' : ''}`}
           />
         </Field>
         
-        {/* Ô MẬT KHẨU (Chỉ hiện khi thêm mới hoặc bạn có thể hiện khi sửa nếu muốn cho Admin đổi pass) */}
         {!initial && (
           <Field label="Mật khẩu khởi tạo">
             <input

@@ -194,7 +194,11 @@ const uploadFileToSupabase = async (file: File, purpose: FilePurpose): Promise<s
     folder = ""; 
   }
 
-  const cleanFileName = file.name.replace(/\s+/g, '-');
+  // --- MỚI CẬP NHẬT: LÀM SẠCH TÊN FILE TRIỆT ĐỂ ---
+  const cleanFileName = file.name
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // 1. Xóa dấu tiếng Việt (á, à, ả -> a)
+    .replace(/[^a-zA-Z0-9.-]/g, '-');                 // 2. Thay thế mọi ký tự không phải chữ, số, dấu chấm bằng dấu gạch ngang (-)
+
   const uniqueName = `${Date.now()}-${cleanFileName}`;
   const storagePath = folder ? `${folder}/${uniqueName}` : uniqueName;
 
@@ -559,8 +563,6 @@ function TrackForm({
   onCancel: () => void; 
   onSubmit: (t: Track) => void;
 }) {
-  const nextId = String((existingIds.reduce((m, x) => Math.max(m, Number(x) || 0), 0) || 0) + 1);
-  
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [originalFile, setOriginalFile] = useState<File | null>(null);
@@ -570,7 +572,7 @@ function TrackForm({
 
   const [form, setForm] = useState<Track>(
     initial ?? {
-      id: nextId, 
+      id: "", 
       title: "", 
       artist: "", 
       category: "", 
@@ -607,33 +609,76 @@ function TrackForm({
     }
   };
 
+  // MỚI: Hàm xử lý riêng cho Bản nhạc gốc để đọc thời lượng tự động
+  const handleOriginalFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setOriginalFile(null);
+      return;
+    }
+
+    const fileExt = file.name.split('.').pop()?.toLowerCase() || "";
+
+    if (!['mp3', 'wav'].includes(fileExt)) {
+      toast.error("Chỉ chấp nhận định dạng .mp3 hoặc .wav");
+      e.target.value = "";
+      setOriginalFile(null);
+    } else {
+      setOriginalFile(file);
+      setError("");
+
+      // Xử lý đọc thời lượng bằng HTML5 Audio API
+      const dur = await new Promise<string>((resolve) => {
+        const url = URL.createObjectURL(file);
+        const audio = new Audio(url);
+        audio.onloadedmetadata = () => {
+          URL.revokeObjectURL(url); // Giải phóng bộ nhớ ngay lập tức
+          const m = Math.floor(audio.duration / 60);
+          const s = Math.floor(audio.duration % 60);
+          resolve(`${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve("");
+        };
+      });
+
+      if (dur) {
+        setForm(prev => ({ ...prev, duration: dur }));
+      } else {
+        toast.error("Không thể đọc được thông số thời lượng từ tệp này.");
+      }
+    }
+  };
+
   const submit = async () => {
-    if (!form.id?.trim() || !form.title?.trim() || !form.duration?.trim() || !form.artist?.trim()) { 
-      setError("Vui lòng nhập đầy đủ Mã, Tên bài hát, Tác giả và Thời lượng."); 
-      return; 
-    }
-    
-    const priceVal = Number(form.price);
-    if (form.price === undefined || form.price === null || String(form.price).trim() === "") { 
-      setError("Vui lòng nhập Giá bán."); 
-      return; 
-    }
-    if (isNaN(priceVal) || priceVal <= 0) { 
-      setError("Giá bán phải là một số dương hợp lệ."); 
-      return; 
-    }
-    
-    const durationRegex = /^\d{1,2}:[0-5]\d$/;
-    if (!durationRegex.test(form.duration.trim())) { 
-      setError("Thời lượng không hợp lệ. (ví dụ: 03:24)."); 
-      return; 
-    }
-    
-    if (!initial && (!previewFile || !originalFile)) { 
-      setError("Vui lòng upload đầy đủ Bản nghe thử và Bản nhạc gốc"); 
+    // 1. KIỂM TRA ĐIỀN THIẾU THÔNG TIN BẮT BUỘC
+    const isPriceEmpty = form.price === undefined || form.price === null || String(form.price).trim() === "";
+    const isMissingFiles = !initial && (!previewFile || !originalFile);
+
+    if (
+      !form.title?.trim() || 
+      !form.artist?.trim() || 
+      isPriceEmpty || 
+      isMissingFiles
+    ) { 
+      setError("Vui lòng nhập đầy đủ thông tin."); 
       return; 
     }
 
+    if (!form.duration?.trim()) {
+      setError("Chưa lấy được thời lượng. Vui lòng tải lại bản nhạc gốc hợp lệ.");
+      return;
+    }
+    
+    // 2. KIỂM TRA TÍNH HỢP LỆ CỦA DỮ LIỆU ĐÃ NHẬP
+    const priceVal = Number(form.price);
+    if (isNaN(priceVal) || priceVal <= 0 || !Number.isInteger(priceVal)) { 
+      setError("Giá bán phải là số nguyên dương hợp lệ (không chấp nhận số thập phân)."); 
+      return; 
+    }
+
+    // 3. XỬ LÝ UPLOAD VÀ LƯU VÀO CSDL
     try {
       setIsUploading(true); 
       setError(""); 
@@ -670,43 +715,48 @@ function TrackForm({
       size="lg"
     >
       <div className="space-y-3 text-sm">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Mã bài nhạc">
-            <input 
-              disabled={!!initial} 
-              value={form.id} 
-              onChange={(e) => setForm({ ...form, id: e.target.value })} 
-              className="input" 
-            />
-          </Field>
-          
-          <Field label="Thời lượng (mm:ss)">
-            <input 
-              value={form.duration} 
-              onChange={(e) => setForm({ ...form, duration: e.target.value })} 
-              placeholder="03:24" 
-              className="input" 
-            />
-          </Field>
-        </div>
         
-        <Field label="Tên bài hát">
-          <input 
-            value={form.title} 
-            onChange={(e) => setForm({ ...form, title: e.target.value })} 
-            className="input" 
-          />
-        </Field>
+        {initial && (
+          <Field label="Mã bài nhạc (Track ID)">
+            <input 
+              disabled={true} 
+              value={form.id} 
+              className="input w-full bg-input/20 cursor-not-allowed opacity-70" 
+            />
+          </Field>
+        )}
+
+        <div className="grid grid-cols-3 gap-4">
+          <div className="col-span-2">
+            <Field label="Tên bài hát">
+              <input 
+                value={form.title} 
+                onChange={(e) => setForm({ ...form, title: e.target.value })} 
+                className="input w-full" 
+              />
+            </Field>
+          </div>
+          <div className="col-span-1">
+            {/* ĐÃ SỬA: Đổi thời lượng sang chỉ đọc, hiển thị tự động dựa trên file gốc */}
+            <Field label="Thời lượng (Tự động)">
+              <input 
+                disabled={true}
+                value={form.duration} 
+                placeholder="00:00" 
+                className="input w-full bg-input/20 cursor-not-allowed opacity-70" 
+              />
+            </Field>
+          </div>
+        </div>
         
         <div className="grid grid-cols-2 gap-4">
           <Field label="Tác giả">
-            {/* Đổi thành thẻ Input vì không còn query từ bảng nữa */}
             <input 
               type="text"
               value={form.artist} 
               onChange={(e) => setForm({ ...form, artist: e.target.value })} 
               placeholder="Nhập tên tác giả..."
-              className="input"
+              className="input w-full"
             />
           </Field>
           
@@ -751,11 +801,12 @@ function TrackForm({
               ...form, 
               price: e.target.value === "" ? "" : Number(e.target.value) 
             })} 
-            className="input [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]" 
+            className="input w-full [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]" 
+            step="1"
           />
         </Field>
         
-        <Field label="Bản nghe thử (.mp3, có Watermark)">
+        <Field label="Bản nghe thử (.mp3)">
           <input 
             type="file" 
             accept=".mp3,audio/mpeg" 
@@ -777,7 +828,8 @@ function TrackForm({
           <input 
             type="file" 
             accept=".mp3,.wav,audio/mpeg,audio/wav" 
-            onChange={(e) => handleFileSelect(e, setOriginalFile, ['mp3', 'wav'], "Chỉ chấp nhận định dạng .mp3 hoặc .wav")} 
+            // ĐÃ ĐỔI TỪ handleFileSelect SANG handleOriginalFileSelect ĐỂ CHẠY HÀM ĐỌC THỜI LƯỢNG
+            onChange={handleOriginalFileSelect} 
             className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gold/10 file:text-gold hover:file:bg-gold/20" 
           />
           {originalFile ? (
@@ -803,7 +855,7 @@ function TrackForm({
               Đã chọn tệp mới: {coverFile.name}
             </p>
           ) : form.cover ? (
-            <>
+             <>
               <p className="mt-1 truncate text-xs text-muted-foreground">
                 Đang có sẵn: {form.cover.split('/').pop()}
               </p>
