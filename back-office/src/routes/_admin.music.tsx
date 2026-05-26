@@ -461,15 +461,13 @@ function TrashTab({
   trashedTracks: Track[];
   setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
 }) {
-  const [restoring, setRestoring] = useState<Track | null>(null);
-
   return (
     <>
       <div className="mb-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground bg-sidebar/30 p-3 rounded-lg border border-border">
           <AlertTriangle className="h-4 w-4 text-amber-500" />
           <span>
-            Đây là những bài nhạc đã được gỡ khỏi cửa hàng. Người dùng không thể nhìn thấy và mua chúng nữa.
+            Đây là những bài nhạc đã được gỡ khỏi cửa hàng (Không thể khôi phục). Người dùng mới không thể nhìn thấy và mua chúng nữa.
           </span>
         </div>
       </div>
@@ -501,51 +499,11 @@ function TrashTab({
                 <div className="text-sm font-bold text-muted-foreground">
                   {fmt(Number(t.price))}
                 </div>
-                
-                {canEditMusic(getCurrentUser()) && (
-                  <button 
-                    onClick={() => setRestoring(t)} 
-                    className="flex items-center gap-1 rounded-md bg-green-500/10 px-3 py-1.5 text-xs font-medium text-green-500 transition hover:bg-green-500/20"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" /> Khôi phục
-                  </button>
-                )}
+                {/* Đã gỡ bỏ nút Khôi phục ở đây */}
               </div>
             </div>
           ))}
         </div>
-      )}
-
-      {restoring && (
-        <ConfirmAction
-          title="Khôi phục bài nhạc?"
-          message={
-            <>
-              Đưa bài <strong className="text-gold">{restoring.title}</strong> quay trở lại cửa hàng?
-            </>
-          }
-          confirmText="Khôi phục ngay"
-          confirmStyle="success"
-          onCancel={() => setRestoring(null)}
-          onConfirm={async () => {
-            const { error } = await melodiseDb
-              .from("tracks")
-              .update({ is_deleted: false })
-              .eq("track_id", Number(restoring.id));
-              
-            if (error) { 
-              toast.error("Lỗi khôi phục: " + error.message); 
-              return; 
-            }
-            
-            setTracks((prev) => prev.map((x) => 
-              x.id === restoring.id ? { ...x, isDeleted: false } : x
-            ));
-            
-            toast.success("Khôi phục thành công!");
-            setRestoring(null);
-          }}
-        />
       )}
     </>
   );
