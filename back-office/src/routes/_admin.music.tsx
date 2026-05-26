@@ -117,7 +117,7 @@ function MusicPage() {
     <>
       <PageHeader
         title="Quản lý nhạc số"
-        subtitle="Thêm bài hát, cập nhật giá và quản lý danh mục."
+        subtitle="Thêm bài nhạc, cập nhật giá và quản lý danh mục."
       />
 
       <div className="mb-4 inline-flex rounded-lg border border-border bg-sidebar/40 p-1">
@@ -236,18 +236,32 @@ function TracksTab({
   categories: Category[];
 }) {
   const [keyword, setKeyword] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all"); // MỚI: State lưu giá trị lọc danh mục
   const [editing, setEditing] = useState<Track | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Track | null>(null);
 
+  // MỚI: Cập nhật logic lọc dữ liệu đa điều kiện
   const filtered = useMemo(() => {
     const k = keyword.trim().toLowerCase();
-    if (!k) return tracks;
-    return tracks.filter((t) => 
-      t.title.toLowerCase().includes(k) || 
-      t.artist.toLowerCase().includes(k)
-    );
-  }, [tracks, keyword]);
+    
+    return tracks.filter((t) => {
+      // 1. Lọc theo danh mục trước (nếu khác "all")
+      if (categoryFilter !== "all" && !t.categoryIds.includes(Number(categoryFilter))) {
+        return false;
+      }
+      
+      // 2. Nếu không có từ khóa tìm kiếm thì trả về true luôn
+      if (!k) return true;
+      
+      // 3. Tìm kiếm từ khóa trên Mã, Tên bài nhạc và Tác giả
+      return (
+        t.id.toLowerCase().includes(k) ||
+        t.title.toLowerCase().includes(k) || 
+        t.artist.toLowerCase().includes(k)
+      );
+    });
+  }, [tracks, keyword, categoryFilter]);
 
   const handleSave = async (t: Track) => {
     const formatPath = (path: string | undefined, bucket: string, folder: string) => {
@@ -260,7 +274,7 @@ function TracksTab({
 
     const dbPayload = {
       title: t.title,
-      artist: t.artist, // Truyền trực tiếp chuỗi artist lên DB
+      artist: t.artist,
       duration: t.duration,
       price: t.price,
       demo_audio_url: formatPath(t.preview, "public-media", "demos"),
@@ -335,15 +349,30 @@ function TracksTab({
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-3">
+        {/* Ô tìm kiếm */}
         <div className="relative min-w-[260px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="Tìm bài nhạc đang bán..."
-            className="w-full rounded-lg border border-border bg-input/40 py-2 pl-10 pr-3 text-sm placeholder:text-muted-foreground focus:border-gold focus:outline-none"
+            placeholder="Tìm theo mã, tên bài nhạc, tác giả..."
+            className="w-full rounded-lg border border-border bg-input/40 py-2 pl-10 pr-3 text-sm placeholder:text-muted-foreground focus:border-gold focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
+        
+        {/* MỚI: Thẻ Select lọc theo danh mục */}
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="rounded-lg border border-border bg-input/40 px-3 py-2 text-sm focus:border-gold focus:outline-none"
+        >
+          <option value="all">Tất cả danh mục</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
         
         {canEditMusic(getCurrentUser()) && (
           <button
@@ -357,7 +386,7 @@ function TracksTab({
 
       {filtered.length === 0 ? (
         <div className="glass-card rounded-2xl p-8 text-center text-muted-foreground">
-          Không tìm thấy bài nhạc nào đang bán
+          Không tìm thấy dữ liệu
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -686,7 +715,7 @@ function TrackForm({
 
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2">
-            <Field label="Tên bài hát">
+            <Field label="Tên bài nhạc">
               <input 
                 value={form.title} 
                 onChange={(e) => setForm({ ...form, title: e.target.value })} 
@@ -1103,26 +1132,29 @@ function CategoryForm({
   onCancel: () => void; 
   onSubmit: (c: Category) => void; 
 }) {
-  const nextId = String((existingIds.reduce((m, x) => Math.max(m, Number(x) || 0), 0) || 0) + 1); 
-  const [form, setForm] = useState<Category>(initial ?? { id: nextId, name: "", description: "" });
+  // ĐÃ SỬA: Bỏ logic tính nextId, gán id là chuỗi rỗng khi tạo mới vì DB sẽ tự sinh
+  const [form, setForm] = useState<Category>(initial ?? { id: "", name: "", description: "" });
   
   return (
     <Modal title={initial ? "Sửa danh mục" : "Thêm danh mục"} onClose={onCancel}>
       <div className="space-y-3 text-sm">
-        <Field label="Mã danh mục">
-          <input 
-            disabled={!!initial} 
-            value={form.id} 
-            onChange={(e) => setForm({ ...form, id: e.target.value })} 
-            className="input" 
-          />
-        </Field>
+        
+        {/* MỚI CẬP NHẬT: Chỉ hiện Mã danh mục khi Sửa (đã có initial) và không cho chỉnh sửa */}
+        {initial && (
+          <Field label="Mã danh mục">
+            <input 
+              disabled={true} 
+              value={form.id} 
+              className="input w-full bg-input/20 cursor-not-allowed opacity-70" 
+            />
+          </Field>
+        )}
         
         <Field label="Tên danh mục">
           <input 
             value={form.name} 
             onChange={(e) => setForm({ ...form, name: e.target.value })} 
-            className="input" 
+            className="input w-full" 
           />
         </Field>
         
@@ -1130,7 +1162,7 @@ function CategoryForm({
           <input 
             value={form.description} 
             onChange={(e) => setForm({ ...form, description: e.target.value })} 
-            className="input" 
+            className="input w-full" 
           />
         </Field>
         
