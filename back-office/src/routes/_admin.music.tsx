@@ -424,7 +424,7 @@ function TracksTab({
               Bạn có chắc chắn muốn gỡ bài <strong className="text-gold">{deleting.title}</strong> khỏi cửa hàng không?
             </>
           }
-          extraNote="Khách hàng mới sẽ không thể mua, nhưng khách đã mua vẫn có thể tải về. (Có thể khôi phục lại trong Thùng rác)"
+          extraNote="Khách hàng mới sẽ không thể mua, nhưng khách đã mua vẫn có thể tải về. (Hành động này không thể hoàn tác)"
           confirmText="Xác nhận gỡ"
           confirmStyle="destructive"
           onCancel={() => setDeleting(null)}
