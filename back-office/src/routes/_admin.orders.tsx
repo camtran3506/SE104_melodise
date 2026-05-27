@@ -20,16 +20,16 @@ function OrdersGuard() {
 type OrderStatus = "Chờ duyệt" | "Đã duyệt" | "Hủy đơn";
 type OrderItem = { title: string; artist: string; price: number };
 
-// Đã dọn dẹp sạch sẽ các trường cấp phép thủ công (licenseCode, licenseTerm...)
 type Order = {
   id: string; 
-  realId: string | number; // ID thực tế (hỗ trợ cả BIGINT và UUID)
+  realId: string | number;
   customer: string;
   email: string;
   items: OrderItem[];
   total: number;
   status: OrderStatus;
-  date: string;
+  date: string; 
+  rawDate: string; 
 };
 
 const fmt = (n: number) => n.toLocaleString("vi-VN") + "₫";
@@ -37,8 +37,13 @@ const fmt = (n: number) => n.toLocaleString("vi-VN") + "₫";
 function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [keyword, setKeyword] = useState("");
   const [selected, setSelected] = useState<Order | null>(null);
+
+  // CÁC STATE CHO BỘ LỌC
+  const [keyword, setKeyword] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   // FETCH DATA TỪ DATABASE
   useEffect(() => {
@@ -86,6 +91,7 @@ function OrdersPage() {
             total: total,
             status: (o.status as OrderStatus) || "Chờ duyệt",
             date: new Date(o.created_at).toLocaleDateString("vi-VN"),
+            rawDate: o.created_at, 
           };
         });
 
@@ -100,22 +106,51 @@ function OrdersPage() {
     fetchOrders();
   }, []);
 
+  // LOGIC LỌC ĐA ĐIỀU KIỆN (KẾT HỢP)
   const filtered = useMemo(() => {
-    const k = keyword.trim().toLowerCase();
-    if (!k) return orders;
-    return orders.filter(
-      (o) =>
-        o.id.toLowerCase().includes(k) ||
-        o.email.toLowerCase().includes(k) ||
-        o.customer.toLowerCase().includes(k) ||
-        o.items.some((it) => it.title.toLowerCase().includes(k)),
-    );
-  }, [orders, keyword]);
+    return orders.filter((o) => {
+      // 1. Lọc theo trạng thái
+      if (statusFilter !== "all" && o.status !== statusFilter) {
+        return false;
+      }
 
-  // LƯU TRẠNG THÁI & TỰ ĐỘNG CẤP PHÉP (AUTO-LICENSE)
+      // 2. Lọc theo khoảng thời gian
+      if (startDate || endDate) {
+        const orderDate = new Date(o.rawDate);
+        
+        if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0); 
+          if (orderDate < start) return false;
+        }
+        
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999); 
+          if (orderDate > end) return false;
+        }
+      }
+
+      // 3. Lọc theo từ khóa
+      if (keyword) {
+        const k = keyword.trim().toLowerCase();
+        const matchId = o.id.toLowerCase().includes(k);
+        const matchEmail = o.email.toLowerCase().includes(k);
+        const matchCustomer = o.customer.toLowerCase().includes(k);
+        const matchItems = o.items.some((it) => it.title.toLowerCase().includes(k));
+        
+        if (!matchId && !matchEmail && !matchCustomer && !matchItems) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [orders, keyword, statusFilter, startDate, endDate]);
+
+  // LƯU TRẠNG THÁI & TỰ ĐỘNG CẤP PHÉP
   const handleUpdate = async (updated: Order) => {
     try {
-      // 1. Cập nhật Status vào bảng orders
       const { error: orderError } = await melodiseDb
         .from("orders")
         .update({ status: updated.status })
@@ -123,19 +158,15 @@ function OrdersPage() {
 
       if (orderError) throw orderError;
 
-      // 2. Logic xử lý bảng licenses tự động với cơ chế kiểm tra lỗi chặt chẽ
       if (updated.status === "Đã duyệt") {
-        // Thực hiện thêm mới vào bảng licenses
         const { error: licenseInsertError } = await melodiseDb
           .from("licenses")
           .insert({ order_id: updated.realId });
           
-        // Nếu bị lỗi trùng mã đơn (đã được cấp phép trước đó) thì bỏ qua (mã lỗi 23505), còn lỗi khác thì chặn lại
         if (licenseInsertError && licenseInsertError.code !== "23505") {
           throw licenseInsertError;
         }
       } else {
-        // Nếu chuyển về trạng thái Hủy đơn hoặc Chờ duyệt -> Tiến hành thu hồi giấy phép
         const { error: licenseDeleteError } = await melodiseDb
           .from("licenses")
           .delete()
@@ -144,7 +175,6 @@ function OrdersPage() {
         if (licenseDeleteError) throw licenseDeleteError;
       }
 
-      // Cập nhật lại trạng thái hiển thị trên giao diện local
       setOrders((prev) => prev.map((o) => (o.realId === updated.realId ? updated : o)));
       toast.success("Đã cập nhật trạng thái đơn hàng và xử lý cấp phép thành công");
       setSelected(null);
@@ -172,14 +202,55 @@ function OrdersPage() {
         subtitle="Tra cứu đơn hàng, duyệt và cấp quyền cho khách hàng."
       />
 
-      <div className="mb-4 relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          placeholder="Tìm theo mã đơn hàng, email khách, tên bài nhạc..."
-          className="w-full rounded-lg border border-border bg-input/40 py-2 pl-10 pr-3 text-sm placeholder:text-muted-foreground focus:border-gold focus:outline-none"
-        />
+      {/* THANH CÔNG CỤ TÌM KIẾM VÀ LỌC */}
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center glass-card p-3 rounded-xl border border-border/50">
+        
+        {/* Bộ lọc 1: Từ khóa */}
+        <div className="relative flex-1 min-w-[260px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="Tìm theo mã đơn, email, khách hàng..."
+            className="w-full rounded-lg border border-border bg-input/40 py-2 pl-10 pr-3 text-sm placeholder:text-muted-foreground focus:border-gold focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Bộ lọc 2: Trạng thái */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as any)}
+            className="rounded-lg border border-border bg-input/40 px-3 py-2 text-sm focus:border-gold focus:outline-none cursor-pointer"
+          >
+            <option value="all">Tất cả trạng thái</option>
+            <option value="Chờ duyệt">Chờ duyệt</option>
+            <option value="Đã duyệt">Đã duyệt</option>
+            <option value="Hủy đơn">Hủy đơn</option>
+          </select>
+
+          {/* Bộ lọc 3: Từ ngày */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-medium">Từ:</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="rounded-lg border border-border bg-input/40 px-3 py-2 text-sm focus:border-gold focus:outline-none [color-scheme:dark] cursor-pointer"
+            />
+          </div>
+
+          {/* Bộ lọc 4: Đến ngày */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-medium">Đến:</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="rounded-lg border border-border bg-input/40 px-3 py-2 text-sm focus:border-gold focus:outline-none [color-scheme:dark] cursor-pointer"
+            />
+          </div>
+        </div>
       </div>
 
       <OrdersTable orders={filtered} onView={setSelected} />
@@ -205,7 +276,7 @@ function OrdersTable({
   if (orders.length === 0) {
     return (
       <div className="glass-card rounded-2xl p-8 text-center text-muted-foreground">
-        Không tìm thấy dữ liệu
+        Không tìm thấy dữ liệu đơn hàng phù hợp
       </div>
     );
   }
@@ -239,7 +310,7 @@ function OrdersTable({
                 <td className="px-4 py-3 text-right">
                   <button
                     onClick={() => onView(o)}
-                    className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs hover:border-gold hover:text-gold"
+                    className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs hover:border-gold hover:text-gold transition-colors"
                   >
                     Xem chi tiết
                   </button>
@@ -258,10 +329,10 @@ function StatusBadge({ status }: { status: OrderStatus }) {
     <span
       className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
         status === "Đã duyệt"
-          ? "bg-emerald-500/15 text-emerald-300"
+          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
           : status === "Chờ duyệt"
-            ? "bg-amber-400/15 text-amber-200"
-            : "bg-destructive/20 text-destructive-foreground"
+            ? "bg-amber-400/15 text-amber-200 border border-amber-400/20"
+            : "bg-destructive/15 text-destructive border border-destructive/20"
       }`}
     >
       {status}
@@ -281,7 +352,6 @@ function ApprovalForm({
   const [status, setStatus] = useState<OrderStatus>(order.status);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Chỉ cho phép lưu nếu trạng thái thực sự bị thay đổi
   const isUnchanged = status === order.status;
 
   const submit = async () => {
@@ -319,7 +389,7 @@ function ApprovalForm({
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as OrderStatus)}
-              className="input w-full mt-1.5 font-medium"
+              className="input w-full mt-1.5 font-medium cursor-pointer"
             >
               <option value="Chờ duyệt">Chờ duyệt</option>
               <option value="Đã duyệt">Duyệt & Tự động cấp phép</option>
@@ -327,7 +397,7 @@ function ApprovalForm({
             </select>
           </Field>
           <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
-            Hệ thống sẽ tự động cấp mã bản quyền vĩnh viễn cho khách hàng khi bạn chọn <strong>Phê duyệt</strong>.
+            Hệ thống sẽ tự động cấp mã bản quyền vĩnh viễn cho khách hàng khi bạn chọn <strong>Duyệt & Tự động cấp phép</strong>.
           </p>
         </div>
 
@@ -336,7 +406,7 @@ function ApprovalForm({
           <button
             onClick={onCancel}
             disabled={isSubmitting}
-            className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent/30 disabled:opacity-50"
+            className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent/30 disabled:opacity-50 transition-colors"
           >
             Đóng
           </button>

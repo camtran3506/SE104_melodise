@@ -23,7 +23,7 @@ function MusicGuard() {
 type Track = {
   id: string;
   title: string;
-  artist: string; // Đã giữ lại artist (string), xóa artistId
+  artist: string; 
   category: string;
   categoryIds: number[];
   duration: string; 
@@ -31,6 +31,7 @@ type Track = {
   preview: string; 
   original: string; 
   cover?: string;
+  description?: string; // MỚI: Thêm trường mô tả
   isDeleted: boolean; 
 };
 
@@ -90,7 +91,7 @@ function MusicPage() {
         (tRes.data ?? []).map((t: any) => ({
           id: String(t.track_id),
           title: t.title,
-          artist: t.artist || "—", // Lấy trực tiếp từ cột artist mới
+          artist: t.artist || "—", 
           category: (trackCatNamesMap.get(t.track_id) ?? []).join(", "),
           categoryIds: trackCatIdsMap.get(t.track_id) ?? [],
           duration: t.duration,
@@ -98,6 +99,7 @@ function MusicPage() {
           preview: t.demo_audio_url ?? "",
           original: t.original_audio_url ?? "",
           cover: t.cover_image_url ?? undefined,
+          description: t.description ?? "", // MỚI: Lấy mô tả từ Database
           isDeleted: t.is_deleted ?? false, 
         })),
       );
@@ -277,6 +279,7 @@ function TracksTab({
       artist: t.artist,
       duration: t.duration,
       price: t.price,
+      description: t.description, // Truyền mô tả lên DB
       demo_audio_url: formatPath(t.preview, "public-media", "demos"),
       original_audio_url: formatPath(t.original, "private-vault", ""),
       cover_image_url: formatPath(t.cover, "public-media", "covers"),
@@ -299,6 +302,7 @@ function TracksTab({
       
       const updatedTrack = { 
         ...t, 
+        description: dbPayload.description || "", // BỔ SUNG MÔ TẢ TẠI ĐÂY
         preview: dbPayload.demo_audio_url || "", 
         original: dbPayload.original_audio_url || "", 
         cover: dbPayload.cover_image_url || undefined,
@@ -324,6 +328,7 @@ function TracksTab({
       const newTrackData = { 
         ...t, 
         id: savedTrackId,
+        description: dbPayload.description || "", // BỔ SUNG MÔ TẢ TẠI ĐÂY
         preview: dbPayload.demo_audio_url || "", 
         original: dbPayload.original_audio_url || "", 
         cover: dbPayload.cover_image_url || undefined,
@@ -568,6 +573,7 @@ function TrackForm({
       price: "", 
       preview: "", 
       original: "", 
+      description: "",
       isDeleted: false
     }
   );
@@ -790,6 +796,15 @@ function TrackForm({
             })} 
             className="input w-full [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]" 
             step="1"
+          />
+        </Field>
+
+        <Field label="Mô tả (Tùy chọn)">
+          <textarea
+            value={form.description || ""}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="Nhập thông tin giới thiệu, cảm hứng sáng tác hoặc lời bài hát..."
+            className="input w-full resize-y min-h-[80px]"
           />
         </Field>
         
