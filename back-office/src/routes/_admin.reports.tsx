@@ -79,13 +79,22 @@ function ExportModal({ onClose }: { onClose: () => void }) {
 
     setLoading(true);
     try {
+      let hasData = false;
+      
+      // Chờ hàm xử lý trả về kết quả xem có dữ liệu hay không
       if (type === "revenue") {
-        await exportRevenue(from, to, setInfo);
+        hasData = await exportRevenue(from, to, setInfo);
       } else {
-        await exportTopTracks(from, to, setInfo);
+        hasData = await exportTopTracks(from, to, setInfo);
       }
-      toast.success("Xuất báo cáo thành công");
-      onClose();
+      
+      // NẾU CÓ DỮ LIỆU: Báo thành công và đóng Modal
+      if (hasData) {
+        toast.success("Xuất báo cáo thành công");
+        onClose();
+      }
+      // NẾU KHÔNG CÓ DỮ LIỆU: Modal vẫn mở, hiện dòng thông báo setInfo màu vàng
+      
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Không xuất được báo cáo";
       setError(msg);
@@ -126,7 +135,7 @@ function ExportModal({ onClose }: { onClose: () => void }) {
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="input"
+              className="input cursor-pointer [color-scheme:dark]"
             />
           </label>
           <label className="block">
@@ -137,7 +146,7 @@ function ExportModal({ onClose }: { onClose: () => void }) {
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              className="input"
+              className="input cursor-pointer [color-scheme:dark]"
             />
           </label>
         </div>
@@ -147,6 +156,8 @@ function ExportModal({ onClose }: { onClose: () => void }) {
             {error}
           </div>
         )}
+        
+        {/* DÒNG THÔNG BÁO KHI KHÔNG CÓ DỮ LIỆU */}
         {info && !error && (
           <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-2 text-xs text-amber-200">
             {info}
@@ -175,7 +186,7 @@ function ExportModal({ onClose }: { onClose: () => void }) {
             ) : (
               <FileSpreadsheet className="h-4 w-4" />
             )}{" "}
-            {loading ? "Đang xuất..." : "Xuất báo cáo"}
+            {loading ? "Đang truy xuất..." : "Xuất báo cáo"}
           </button>
         </div>
       </div>
@@ -183,21 +194,27 @@ function ExportModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// =============== EXPORT REVENUE (ĐÃ NÂNG CẤP THẨM MỸ) ===============
+// =============== EXPORT REVENUE ===============
 async function exportRevenue(
   from: string,
   to: string,
   setInfo: (s: string) => void,
-) {
+): Promise<boolean> {
+  const startTime = `${from} 00:00:00`;
+  const endTime = `${to} 23:59:59`;
+
   const { data, error } = await supabase.rpc("get_revenue_report", {
-    start_date: from,
-    end_date: to,
+    start_date: startTime,
+    end_date: endTime,
   });
   if (error) throw new Error(error.message);
 
   const rows = data || [];
+  
+  // 🌟 KHẮC PHỤC: DỪNG NGAY LẬP TỨC NẾU KHÔNG CÓ DỮ LIỆU
   if (rows.length === 0) {
-    setInfo("Không có dữ liệu trong khoảng thời gian này. Đã xuất file rỗng.");
+    setInfo(`Không có dữ liệu trong khoảng thời gian này`);
+    return false; // Trả về false để UI biết là không có data
   }
 
   let totalRevenue = 0;
@@ -217,14 +234,12 @@ async function exportRevenue(
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Báo cáo doanh thu");
 
-  // 1. Khối Tiêu đề
   ws.mergeCells("A1:C1"); 
   ws.getCell("A1").value = "BÁO CÁO DOANH THU";
   ws.getCell("A1").font = { bold: true, size: 16, color: { argb: "FFB8860B" } };
   ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
   ws.getRow(1).height = 30;
 
-  // 2. Khối Summary
   ws.getCell("A3").value = "Từ ngày:";
   ws.getCell("B3").value = from;
   ws.getCell("A4").value = "Đến ngày:";
@@ -237,7 +252,6 @@ async function exportRevenue(
   ws.getCell("B6").value = totalOrders;
   ws.getCell("B6").font = { bold: true };
 
-  // 3. Khối Header Bảng biểu (Kẻ viền đậm)
   const headerRow = 8;
   ws.getCell(`A${headerRow}`).value = "Ngày giao dịch";
   ws.getCell(`B${headerRow}`).value = "Doanh thu (VNĐ) + Biểu đồ";
@@ -257,78 +271,76 @@ async function exportRevenue(
   });
   ws.getRow(headerRow).height = 25;
 
-  // 4. Khối Dữ liệu chi tiết (Kẻ viền mỏng)
-  if (daily.length === 0) {
-    ws.mergeCells(`A9:C9`);
-    ws.getCell("A9").value = "(Không có dữ liệu)";
-    ws.getCell("A9").alignment = { horizontal: "center" };
-  } else {
-    daily.forEach((d, i) => {
-      const r = headerRow + 1 + i;
-      ws.getCell(`A${r}`).value = d.period;
-      ws.getCell(`A${r}`).alignment = { horizontal: "center" };
+  daily.forEach((d, i) => {
+    const r = headerRow + 1 + i;
+    ws.getCell(`A${r}`).value = d.period;
+    ws.getCell(`A${r}`).alignment = { horizontal: "center" };
 
-      ws.getCell(`B${r}`).value = d.revenue;
-      ws.getCell(`B${r}`).numFmt = '#,##0" ₫"';
+    ws.getCell(`B${r}`).value = d.revenue;
+    ws.getCell(`B${r}`).numFmt = '#,##0" ₫"';
 
-      ws.getCell(`C${r}`).value = d.orders;
-      ws.getCell(`C${r}`).alignment = { horizontal: "center" };
+    ws.getCell(`C${r}`).value = d.orders;
+    ws.getCell(`C${r}`).alignment = { horizontal: "center" };
 
-      ['A', 'B', 'C'].forEach(col => {
-        ws.getCell(`${col}${r}`).border = {
-          top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
-        };
-      });
+    ['A', 'B', 'C'].forEach(col => {
+      ws.getCell(`${col}${r}`).border = {
+        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
+      };
     });
+  });
 
-    // 🌟 5. Tạo biểu đồ Data Bar chính chủ của Excel vào cột Doanh thu
-    ws.addConditionalFormatting({
-      ref: `B${headerRow + 1}:B${headerRow + daily.length}`,
-      rules: [
-        {
-          type: 'dataBar',
-          cfvo: [{ type: 'min' }, { type: 'max' }],
-          color: { argb: 'FFFBEB8D' }, // Màu vàng nhạt làm nền biểu đồ
-          border: true
-        } as any
-      ]
-    });
-  }
+  ws.addConditionalFormatting({
+    ref: `B${headerRow + 1}:B${headerRow + daily.length}`,
+    rules: [
+      {
+        type: 'dataBar',
+        cfvo: [{ type: 'min' }, { type: 'max' }],
+        color: { argb: 'FFFBEB8D' },
+        border: true
+      } as any
+    ]
+  });
 
-  // 6. Căn chỉnh độ rộng cột chuẩn
   ws.getColumn(1).width = 20;
   ws.getColumn(2).width = 40;
   ws.getColumn(3).width = 30;
 
   await downloadWb(wb, `bao-cao-doanh-thu_${from}_${to}.xlsx`);
+  return true; // Trả về true báo hiệu đã xuất file thành công
 }
 
-// =============== EXPORT TOP TRACKS (ĐÃ NÂNG CẤP THẨM MỸ) ===============
+// =============== EXPORT TOP TRACKS ===============
 async function exportTopTracks(
   from: string,
   to: string,
   setInfo: (s: string) => void,
-) {
+): Promise<boolean> {
+  const startTime = `${from} 00:00:00`;
+  const endTime = `${to} 23:59:59`;
+
   const { data, error } = await supabase.rpc("get_top_selling_tracks", {
-    start_date: from,
-    end_date: to,
+    start_date: startTime,
+    end_date: endTime,
     limit_count: 100,
   });
   if (error) throw new Error(error.message);
 
   const rows = data || [];
+  // THÊM ĐOẠN KHAI BÁO KIỂU DỮ LIỆU RÕ RÀNG Ở ĐÂY:
   const list: { title: string; artist: string; sold: number; revenue: number }[] = rows.map((r: any) => ({
     title: r.title || "Không rõ",
-    artist: r.artist || "Không rõ", // Đã lấy được dữ liệu thật từ RPC
+    artist: r.artist || "Không rõ",
     sold: Number(r.total_sold) || 0,
     revenue: Number(r.total_revenue) || 0,
   }));
 
+  // 🌟 KHẮC PHỤC: DỪNG NGAY LẬP TỨC NẾU KHÔNG CÓ DỮ LIỆU
   if (list.length === 0) {
-    setInfo("Chưa phát sinh giao dịch nào. Đã xuất file rỗng.");
+    setInfo(`Không có dữ liệu trong khoảng thời gian này`);
+    return false; // Trả về false
   }
 
   const wb = new ExcelJS.Workbook();
@@ -348,7 +360,7 @@ async function exportTopTracks(
   const headerRow = 6;
   const header = ["Tên bài nhạc", "Nghệ sĩ", "Số lượng bán ra", "Tổng doanh thu (VNĐ) + Biểu đồ"];
   header.forEach((h, i) => {
-    const col = String.fromCharCode(65 + i); // Tương ứng A, B, C, D
+    const col = String.fromCharCode(65 + i);
     const cell = ws.getCell(`${col}${headerRow}`);
     cell.value = h;
     cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -363,46 +375,39 @@ async function exportTopTracks(
   });
   ws.getRow(headerRow).height = 25;
 
-  if (list.length === 0) {
-    ws.mergeCells(`A7:D7`);
-    ws.getCell("A7").value = "(Không có dữ liệu)";
-    ws.getCell("A7").alignment = { horizontal: "center" };
-  } else {
-    list.forEach((t, i) => {
-      const r = headerRow + 1 + i;
-      ws.getCell(`A${r}`).value = t.title;
-      ws.getCell(`B${r}`).value = t.artist;
-      ws.getCell(`B${r}`).alignment = { horizontal: "center" };
-      
-      ws.getCell(`C${r}`).value = t.sold;
-      ws.getCell(`C${r}`).alignment = { horizontal: "center" };
-      
-      ws.getCell(`D${r}`).value = t.revenue;
-      ws.getCell(`D${r}`).numFmt = '#,##0" ₫"';
+  list.forEach((t, i) => {
+    const r = headerRow + 1 + i;
+    ws.getCell(`A${r}`).value = t.title;
+    ws.getCell(`B${r}`).value = t.artist;
+    ws.getCell(`B${r}`).alignment = { horizontal: "center" };
+    
+    ws.getCell(`C${r}`).value = t.sold;
+    ws.getCell(`C${r}`).alignment = { horizontal: "center" };
+    
+    ws.getCell(`D${r}`).value = t.revenue;
+    ws.getCell(`D${r}`).numFmt = '#,##0" ₫"';
 
-      ['A', 'B', 'C', 'D'].forEach(col => {
-        ws.getCell(`${col}${r}`).border = {
-          top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
-        };
-      });
+    ['A', 'B', 'C', 'D'].forEach(col => {
+      ws.getCell(`${col}${r}`).border = {
+        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
+      };
     });
+  });
 
-    // 🌟 Thêm DataBar cho cột doanh thu
-    ws.addConditionalFormatting({
-      ref: `D${headerRow + 1}:D${headerRow + list.length}`,
-      rules: [
-        {
-          type: 'dataBar',
-          cfvo: [{ type: 'min' }, { type: 'max' }],
-          color: { argb: 'FFADD8E6' }, // Màu xanh lơ nhạt
-          border: true
-        } as any
-      ]
-    });
-  }
+  ws.addConditionalFormatting({
+    ref: `D${headerRow + 1}:D${headerRow + list.length}`,
+    rules: [
+      {
+        type: 'dataBar',
+        cfvo: [{ type: 'min' }, { type: 'max' }],
+        color: { argb: 'FFADD8E6' },
+        border: true
+      } as any
+    ]
+  });
 
   ws.getColumn(1).width = 36;
   ws.getColumn(2).width = 20;
@@ -410,6 +415,7 @@ async function exportTopTracks(
   ws.getColumn(4).width = 38;
 
   await downloadWb(wb, `bao-cao-nhac-ban-chay_${from}_${to}.xlsx`);
+  return true; // Trả về true báo hiệu đã xuất file thành công
 }
 
 async function downloadWb(wb: ExcelJS.Workbook, filename: string) {
