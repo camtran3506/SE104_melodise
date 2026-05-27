@@ -60,7 +60,7 @@ export function Header() {
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Tìm theo tên, nghệ sĩ, tag…"
+                  placeholder="Tìm theo tên bài nhạc, tên tác giả"
                   className="pl-11 h-12 rounded-full"
                 />
               </div>

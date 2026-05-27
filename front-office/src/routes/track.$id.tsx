@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ShoppingBag, Clock, Music, FileText } from "lucide-react"; // Đã đổi User thành FileText
+import { ShoppingBag, Clock, FileText } from "lucide-react"; // Đã bỏ icon Music vì không còn dùng ô Thể loại
 import { Button } from "@/components/ui/button";
 import { useStore, formatVND } from "@/lib/store";
 import { useTrack } from "@/lib/tracks-api";
@@ -28,6 +28,11 @@ function TrackDetail() {
     toast.success("Đã thêm vào giỏ hàng");
   }
 
+  // MỚI: Xử lý chuỗi danh mục, biến dấu phẩy thành dấu chấm tròn phân cách (·)
+  const displayCategory = track.tags && track.tags.length > 0 
+    ? track.tags.join(' · ') 
+    : (track.genre || "CHƯA PHÂN LOẠI");
+
   return (
     <div className="container mx-auto max-w-6xl px-6 py-12">
       <Link to="/" className="text-mist/70 text-sm hover:text-gold">← Quay lại</Link>
@@ -39,19 +44,17 @@ function TrackDetail() {
           </Button>
         </div>
         <div>
-          <p className="text-gold text-xs uppercase tracking-[0.3em]">{track.genre} · {track.mood}</p>
+          {/* ĐÃ SỬA: Hiển thị danh mục màu vàng ở đây */}
+          <p className="text-gold text-xs uppercase tracking-[0.3em]">{displayCategory}</p>
+          
           <h1 className="font-display text-5xl text-canvas mt-3 leading-tight">{track.title}</h1>
           <p className="text-mist/80 mt-2 text-lg">bởi <span className="text-canvas">{track.artist}</span></p>
 
-          <div className="flex flex-wrap gap-2 mt-6">
-            {track.tags.map((tag) => (
-              <span key={tag} className="px-3 py-1 rounded-full glass-soft text-mist text-xs border border-gold/20">#{tag}</span>
-            ))}
-          </div>
+          {/* ĐÃ XÓA KHỐI HIỂN THỊ TAGS (Hashtag) Ở ĐÂY */}
 
-          <div className="grid grid-cols-2 gap-4 mt-8">
+          {/* ĐÃ SỬA: Chỉ giữ lại ô Thời lượng và giới hạn chiều rộng */}
+          <div className="mt-8 max-w-[200px]">
             <Stat icon={<Clock className="h-4 w-4" />} label="Thời lượng" value={track.duration} />
-            <Stat icon={<Music className="h-4 w-4" />} label="Thể loại" value={track.genre} />
           </div>
 
           <div className="mt-10 glass rounded-3xl p-6 flex items-center justify-between">
@@ -70,7 +73,6 @@ function TrackDetail() {
         </div>
       </div>
 
-      {/* Sửa đổi Section dưới này: Chuyển từ hiện tiểu sử nghệ sĩ sang hiện mô tả bài nhạc */}
       <section className="mt-12 glass rounded-3xl p-6 md:p-8">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-full bg-gold/15 text-gold grid place-items-center ring-1 ring-gold/30">

@@ -55,10 +55,12 @@ export function MusicCard({ track }: { track: Track }) {
               </button>
             )}
           </div>
-          <div className="flex items-center justify-between mt-3">
-            <span className="text-[10px] uppercase tracking-widest text-mist/50">{track.genre}</span>
+          
+          {/* ĐÃ SỬA: Đổi justify-between thành justify-end và xóa thẻ span chứa danh mục */}
+          <div className="flex items-center justify-end mt-3">
             <span className="text-gold font-bold text-sm">{formatVND(track.price)}</span>
           </div>
+          
         </div>
       </div>
     </Link>

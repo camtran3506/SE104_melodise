@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Pencil } from "lucide-react";
+import { Pencil, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useStore } from "@/lib/store";
@@ -12,13 +12,20 @@ export const Route = createFileRoute("/account")({
   head: () => ({ meta: [{ title: "Tài khoản — melodise" }] }),
 });
 
+// KHAI BÁO BIỂU THỨC CHÍNH QUY (Đã bỏ Regex của Email vì không cho sửa nữa)
+const PHONE_REGEX = /^[0-9]{10}$/;
+
 function Account() {
   const user = useStore((s) => s.user);
   const update = useStore((s) => s.updateUser);
   const [edit, setEdit] = useState(false);
+  const [loading, setLoading] = useState(false);
+  
   const [name, setName] = useState(user?.name ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
-  const [email, setEmail] = useState(user?.email ?? "");
+  
+  // State lưu mật khẩu
+  const [currentPw, setCurrentPw] = useState("");
   const [pw, setPw] = useState("");
 
   if (!user) {
@@ -31,28 +38,93 @@ function Account() {
   }
 
   async function save() {
-    // 1. GỌI API CẬP NHẬT DATABASE
-    // Thêm (supabase as any) để bỏ qua lỗi vạch đỏ của TypeScript
-    const { error } = await (supabase as any)
-      .from('users') // Thay bằng tên bảng thực tế của bạn nếu khác
-      .update({ 
-        full_name: name, 
-        phone_number: phone 
-      })
-      .eq('email', user!.email);
-
-    if (error) {
-      return toast.error("Có lỗi xảy ra khi lưu thông tin: " + error.message);
+    // 1. KIỂM TRA LỖI BỎ TRỐNG (Chỉ áp dụng cho Họ tên và Số điện thoại)
+    if (!name.trim() || !phone.trim()) {
+      return toast.error("Vui lòng nhập đầy đủ thông tin");
     }
 
-    // 2. THÀNH CÔNG THÌ MỚI CẬP NHẬT GIAO DIỆN LOCAL STORE
-    update({ name, phone, email });
-    setEdit(false);
-    toast.success("Cập nhật thành công");
+    // 2. KIỂM TRA ĐỊNH DẠNG SỐ ĐIỆN THOẠI
+    if (!PHONE_REGEX.test(phone.trim())) {
+      return toast.error("Số điện thoại không hợp lệ (phải gồm đúng 10 chữ số)");
+    }
+
+    // 3. KIỂM TRA LOGIC ĐỔI MẬT KHẨU
+    if (pw) {
+      if (pw.length < 6) {
+        return toast.error("Mật khẩu mới phải có ít nhất 6 kí tự");
+      }
+      if (!currentPw) {
+        return toast.error("Vui lòng nhập mật khẩu hiện tại để xác nhận đổi mật khẩu");
+      }
+    }
+
+    setLoading(true);
+
+    try {
+      // 4. CẬP NHẬT SUPABASE AUTH (Bảo mật lõi)
+      if (pw) {
+        const { error: authError } = await supabase.auth.updateUser({
+          password: pw,
+          current_password: currentPw // Truyền mật khẩu cũ lên để xác thực
+        });
+        
+        if (authError) {
+          // Bắt chính xác lỗi nhập sai mật khẩu cũ từ Supabase
+          if (
+            authError.message.toLowerCase().includes("current password") || 
+            authError.message.toLowerCase().includes("invalid credentials") ||
+            authError.status === 403 || 
+            authError.status === 400
+          ) {
+            throw new Error("Mật khẩu hiện tại không chính xác");
+          }
+          throw new Error("Lỗi cập nhật bảo mật: " + authError.message);
+        }
+      }
+
+      // 5. CHUẨN BỊ DỮ LIỆU ĐỂ CẬP NHẬT BẢNG USERS
+      const updateData: any = {
+        full_name: name.trim(), 
+        phone_number: phone.trim()
+      };
+      
+      // MỚI: Nếu người dùng có nhập mật khẩu mới thì mới đồng bộ xuống trường password trong CSDL
+      if (pw) {
+        updateData.password = pw;
+      }
+
+      // 6. GỌI API CẬP NHẬT BẢNG USERS
+      const { error: dbError } = await (supabase as any)
+        .from('users')
+        .update(updateData)
+        .eq('email', user.email); 
+
+      if (dbError) {
+        throw new Error("Lỗi cập nhật hồ sơ: " + dbError.message);
+      }
+
+      // 7. THÀNH CÔNG: CẬP NHẬT GIAO DIỆN LOCAL STORE
+      update({ name: name.trim(), phone: phone.trim(), email: user.email });
+      
+      // Xóa trắng ô mật khẩu sau khi lưu
+      setCurrentPw("");
+      setPw(""); 
+      setEdit(false);
+      
+      toast.success("Cập nhật thành công");
+
+    } catch (error: any) {
+      toast.error(error.message || "Có lỗi xảy ra khi lưu thông tin");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function cancel() {
-    setName(user!.name); setPhone(user!.phone); setEmail(user!.email); setPw("");
+    setName(user!.name); 
+    setPhone(user!.phone); 
+    setCurrentPw(""); 
+    setPw("");        
     setEdit(false);
   }
 
@@ -76,18 +148,59 @@ function Account() {
             <Field label="Email" value={user.email} />
             <Field label="Mật khẩu" value="••••••••••" />
             <div className="pt-3 flex justify-center">
-              <Button variant="secondary" size="lg" onClick={() => setEdit(true)}><Pencil className="h-4 w-4" /> Sửa thông tin</Button>
+              <Button variant="secondary" size="lg" onClick={() => setEdit(true)}>
+                <Pencil className="h-4 w-4 mr-2" /> Sửa thông tin
+              </Button>
             </div>
           </div>
         ) : (
           <div className="space-y-4">
-            <LabelGroup label="Họ và tên"><Input value={name} onChange={(e) => setName(e.target.value)} /></LabelGroup>
-            <LabelGroup label="Số điện thoại"><Input value={phone} onChange={(e) => setPhone(e.target.value)} /></LabelGroup>
-            <LabelGroup label="Email"><Input value={email} onChange={(e) => setEmail(e.target.value)} /></LabelGroup>
-            <LabelGroup label="Mật khẩu mới (tùy chọn)"><Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Để trống nếu không đổi" /></LabelGroup>
+            <LabelGroup label="Họ và tên">
+              <Input value={name} onChange={(e) => setName(e.target.value)} disabled={loading} />
+            </LabelGroup>
+            
+            <LabelGroup label="Số điện thoại">
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={loading} />
+            </LabelGroup>
+            
+            {/* EMAIL BỊ KHÓA, KHÔNG CHO CHỈNH SỬA */}
+            <LabelGroup label="Email (Không được phép thay đổi)">
+              <Input 
+                type="email" 
+                value={user.email} 
+                disabled={true} 
+                className="opacity-60 cursor-not-allowed bg-black/20" 
+              />
+            </LabelGroup>
+            
+            <div className="pt-4 border-t border-gold/10 mt-4">
+              <LabelGroup label="Mật khẩu hiện tại (Bắt buộc nếu đổi mật khẩu)">
+                <Input 
+                  type="password" 
+                  value={currentPw} 
+                  onChange={(e) => setCurrentPw(e.target.value)} 
+                  placeholder="Nhập mật khẩu hiện tại" 
+                  disabled={loading} 
+                />
+              </LabelGroup>
+            </div>
+
+            <LabelGroup label="Mật khẩu mới (Tùy chọn)">
+              <Input 
+                type="password" 
+                value={pw} 
+                onChange={(e) => setPw(e.target.value)} 
+                placeholder="Để trống nếu không đổi" 
+                disabled={loading} 
+              />
+            </LabelGroup>
+            
             <div className="pt-3 flex gap-3 justify-center">
-              <Button variant="secondary" size="lg" onClick={cancel}>Hủy bỏ</Button>
-              <Button size="lg" onClick={save}>Cập nhật</Button>
+              <Button variant="secondary" size="lg" onClick={cancel} disabled={loading}>Hủy bỏ</Button>
+              <Button size="lg" onClick={save} disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Cập nhật
+              </Button>
             </div>
           </div>
         )}
@@ -104,6 +217,7 @@ function Field({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
 function LabelGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">

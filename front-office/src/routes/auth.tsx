@@ -14,6 +14,7 @@ export const Route = createFileRoute("/auth")({
 // Biểu thức chính quy kiểm tra định dạng
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_REGEX = /^.{6,}$/; // Ít nhất 6 ký tự
+const PHONE_REGEX = /^[0-9]{10}$/; // MỚI: Regex kiểm tra đúng 10 chữ số
 
 function Auth() {
   const [tab, setTab] = useState<"login" | "register">("login");
@@ -29,9 +30,14 @@ function Auth() {
     e.preventDefault();
 
     if (tab === "register") {
-      // 1. Kiểm tra thiếu thông tin (Báo lỗi chung, không tô đỏ)
+      // 1. Kiểm tra thiếu thông tin
       if (!name || !phone || !email || !password) {
         return toast.error("Vui lòng nhập đầy đủ thông tin");
+      }
+
+      // MỚI: Kiểm tra số điện thoại đúng 10 số
+      if (!PHONE_REGEX.test(phone.trim())) {
+        return toast.error("Số điện thoại không hợp lệ (phải gồm đúng 10 chữ số)");
       }
       
       // 2. Kiểm tra "Email" đúng định dạng
@@ -54,7 +60,7 @@ function Auth() {
               name: name,
               phone: phone,
               role: "Khách hàng", 
-              password: password // <--- BẮT BUỘC THÊM DÒNG NÀY ĐỂ TRIGGER NHẬN ĐƯỢC
+              password: password
             }
           }
         });
@@ -96,7 +102,7 @@ function Auth() {
           return toast.error("Email hoặc mật khẩu không chính xác");
         }
 
-        // Lấy thông tin role từ metadata (đã được lưu ở bước đăng ký)
+        // Lấy thông tin role từ metadata
         const userRoleFromDB = data.user?.user_metadata?.role || "Khách hàng"; 
 
         // Kiểm tra phân quyền: Chặn nếu không phải Khách hàng
@@ -105,7 +111,7 @@ function Auth() {
           return toast.error("Tài khoản này không có quyền truy cập vào trang mua sắm!");
         }
 
-        // Đăng nhập thành công: Cập nhật state (phiên làm việc) của ứng dụng
+        // Đăng nhập thành công
         login({ 
           name: data.user?.user_metadata?.name || email.split("@")[0], 
           email: data.user?.email || email, 
