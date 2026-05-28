@@ -7,6 +7,9 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
+import { useEffect } from "react"; // MỚI
+import { supabase } from "@/integrations/supabase/client"; // MỚI
+import { useStore } from "@/lib/store"; // MỚI
 
 import appCss from "../styles.css?url";
 import { Header } from "@/components/Header";
@@ -118,6 +121,62 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+  const pathname = router.state.location.pathname;
+
+  const user = useStore((s) => s.user);
+  const setOrderTracks = useStore((s) => s.setOrderTracks);
+
+  // =========================================================================
+  // MỚI: Tự động chạy ẩn quét DB mỗi khi nhảy sang trang mới hoặc đăng nhập
+  // =========================================================================
+  useEffect(() => {
+    async function syncGlobalStore() {
+      if (!user) {
+        if (setOrderTracks) setOrderTracks([], []);
+        return;
+      }
+      try {
+        const { data: auth } = await supabase.auth.getUser();
+        if (!auth.user) return;
+        
+        const { data: dbUser } = await (supabase as any).from("users").select("user_id").eq("auth_id", auth.user.id).single();
+        if (!dbUser) return;
+
+        // Lấy tất cả đơn hàng
+        const { data: orders } = await (supabase as any).from("orders").select("order_id, status").eq("user_id", dbUser.user_id);
+        if (!orders || orders.length === 0) {
+          if (setOrderTracks) setOrderTracks([], []);
+          return;
+        }
+
+        // Kéo chi tiết các bài hát trong đơn
+        const orderIds = orders.map((o: any) => o.order_id);
+        const { data: details } = await (supabase as any).from("order_details").select("track_id, order_id").in("order_id", orderIds);
+
+        const owned: string[] = [];
+        const pending: string[] = [];
+
+        if (details) {
+          details.forEach((d: any) => {
+            const o = orders.find((x: any) => x.order_id === d.order_id);
+            if (o?.status === "Đã duyệt") {
+              owned.push(String(d.track_id));
+            } else {
+              pending.push(String(d.track_id));
+            }
+          });
+        }
+        
+        // Đẩy 2 rổ dữ liệu lên Store tổng
+        if (setOrderTracks) setOrderTracks(owned, pending);
+      } catch (err) {
+        console.error("Lỗi đồng bộ Global Store:", err);
+      }
+    }
+    
+    syncGlobalStore();
+  }, [pathname, user, setOrderTracks]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -138,9 +197,8 @@ function RootComponent() {
             color: "#FDFBF7", 
             borderRadius: "16px" 
           },
-          // Thêm block classNames này để chỉnh màu chữ cho description sáng lên
           classNames: {
-            description: "text-mist opacity-90", // Sử dụng token màu 'mist' (bạc mềm mại) của bạn
+            description: "text-mist opacity-90",
           },
         }} 
       />

@@ -4,6 +4,7 @@ import { Download, FileText, FolderOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { Document, Packer, Paragraph, TextRun, AlignmentType } from "docx";
 
 export const Route = createFileRoute("/library")({
   component: Library,
@@ -133,7 +134,7 @@ function Library() {
                 artist: t?.artist || "Không rõ",
                 cover: coverUrl,
                 file_path: t?.original_audio_url || "",
-                price: Number(t?.price) || 0,
+                price: Number(d.price) || Number(t?.price) || 0, 
               };
             });
 
@@ -245,57 +246,137 @@ function Library() {
     }
   };
 
-  const handleDownloadLicense = (order: Order, track: Track) => {
-    // 1. Kiểm tra log xem order thực sự có license chưa
+  // Lưu ý: Đã thêm chữ async vào trước hàm
+  const handleDownloadLicense = async (order: Order, track: Track) => {
     console.log("-> 🔍 Kiểm tra giấy phép của đơn hàng:", order);
 
-    // 2. Tìm kiếm cưỡng bức: Tìm thẳng trong danh sách đơn nếu biến order.license bị thiếu
     const licenseData = order.license;
-
-    console.log("-> 📋 License data:", licenseData);
-    if (!licenseData) {
-      console.error("❌ LỖI: order.license là undefined/null", { orderId: order.realId });
-    }
 
     if (!licenseData || !licenseData.license_code) {
       toast.error("Không tìm thấy thông tin giấy phép! Hãy kiểm tra xem đơn hàng đã ở trạng thái 'Đã duyệt' chưa.");
       return;
     }
 
-    const licenseText = `============================================================
-              GIẤY CHỨNG NHẬN BẢN QUYỀN ÂM NHẠC
-                        MELODISE MUSIC
-============================================================
+    try {
+      // 1. Khởi tạo cấu trúc file Word
+      const doc = new Document({
+        sections: [
+          {
+            properties: {},
+            children: [
+              // Tiêu đề 1
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({
+                    text: "GIẤY CHỨNG NHẬN BẢN QUYỀN ÂM NHẠC",
+                    bold: true,
+                    size: 28, // Kích thước 14pt
+                    font: "Times New Roman",
+                  }),
+                ],
+              }),
+              // Tiêu đề 2
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({
+                    text: "MELODISE MUSIC",
+                    bold: true,
+                    size: 28, 
+                    font: "Times New Roman",
+                  }),
+                ],
+              }),
+              new Paragraph({ text: "" }), // Dòng trống
+              new Paragraph({ text: "" }), 
+              
+              // Cụm thông tin mã số
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "MÃ GIẤY PHÉP:\t", bold: true, font: "Times New Roman", size: 24 }), // 24 = 12pt
+                  new TextRun({ text: licenseData.license_code, font: "Times New Roman", size: 24 }),
+                ],
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "MÃ ĐƠN HÀNG:\t", bold: true, font: "Times New Roman", size: 24 }),
+                  new TextRun({ text: order.id, font: "Times New Roman", size: 24 }),
+                ],
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "NGÀY CẤP:\t\t", bold: true, font: "Times New Roman", size: 24 }),
+                  new TextRun({ text: new Date(licenseData.issued_at).toLocaleDateString("vi-VN"), font: "Times New Roman", size: 24 }),
+                ],
+              }),
+              new Paragraph({ text: "" }),
+              
+              // Cụm thông tin tác phẩm
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "Tên tác phẩm:\t", bold: true, font: "Times New Roman", size: 24 }),
+                  new TextRun({ text: track.title, font: "Times New Roman", size: 24 }),
+                ],
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "Tác giả:\t\t", bold: true, font: "Times New Roman", size: 24 }),
+                  new TextRun({ text: track.artist, font: "Times New Roman", size: 24 }),
+                ],
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "Phạm vi:\t\t", bold: true, font: "Times New Roman", size: 24 }),
+                  new TextRun({ text: licenseData.license_scope, font: "Times New Roman", size: 24 }),
+                ],
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "Thời hạn:\t\t", bold: true, font: "Times New Roman", size: 24 }),
+                  new TextRun({ text: licenseData.license_term, font: "Times New Roman", size: 24 }),
+                ],
+              }),
+              new Paragraph({ text: "" }),
+              new Paragraph({ text: "" }),
+              
+              // Lời cảm ơn
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({
+                    text: "Xin cảm ơn bạn đã đồng hành cùng Melodise!",
+                    italics: true,
+                    font: "Times New Roman",
+                    size: 24,
+                  }),
+                ],
+              }),
+            ],
+          },
+        ],
+      });
 
-MÃ GIẤY PHÉP: ${licenseData.license_code}
-MÃ ĐƠN HÀNG:  ${order.id}
-NGÀY CẤP:     ${new Date(licenseData.issued_at).toLocaleDateString("vi-VN")}
+      // 2. Đóng gói (Pack) file Word thành Blob và tải xuống
+      const blob = await Packer.toBlob(doc);
+      const url = window.URL.createObjectURL(blob);
 
-Tên tác phẩm: ${track.title}
-Tác giả:      ${track.artist}
-Phạm vi:      ${licenseData.license_scope}
-Thời hạn:     ${licenseData.license_term}
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `License_${licenseData.license_code}.docx`;
 
-Xin cảm ơn bạn đã đồng hành cùng Melodise!
-============================================================`;
+      document.body.appendChild(a);
+      a.click();
 
-    const blob = new Blob([licenseText], {
-      type: "text/plain;charset=utf-8",
-    });
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
 
-    const url = window.URL.createObjectURL(blob);
+      toast.success("Đã tải giấy phép thành công!");
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `License_${licenseData.license_code}.txt`;
-
-    document.body.appendChild(a);
-    a.click();
-
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-
-    toast.success("Đã tải giấy phép!");
+    } catch (error) {
+      console.error("Lỗi khi tạo file Word:", error);
+      toast.error("Có lỗi xảy ra khi tạo giấy phép. Vui lòng thử lại!");
+    }
   };
 
   if (loading) {

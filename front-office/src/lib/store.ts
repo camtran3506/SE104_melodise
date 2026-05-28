@@ -17,14 +17,13 @@ export type Track = {
   description?: string;
 };
 
-// Runtime cache populated by useTracks() — used by non-React code (e.g. checkout total).
 export let TRACKS: Track[] = [];
 export function setTracksCache(arr: Track[]) {
   TRACKS = arr;
 }
 
 type CartItem = { trackId: string };
-// Trong store.ts, thêm cấu trúc này vào:
+
 export type License = {
   license_code: string;
   license_scope: string;
@@ -32,14 +31,13 @@ export type License = {
   issued_at: string;
 };
 
-// Cập nhật type Order trong store.ts
 type Order = { 
   id: string; 
   trackIds: string[]; 
   total: number; 
   createdAt: number; 
   status: "pending" | "approved"; 
-  licenses?: License[]; // <--- BẮT BUỘC THÊM DÒNG NÀY
+  licenses?: License[]; 
 };
 
 type User = { name: string; email: string; phone: string; role: "Khách hàng" | "Nhân viên Sản xuất" | "Quản lý cấp cao" | "Nhân viên Kinh doanh" };
@@ -48,6 +46,14 @@ type Store = {
   user: User | null;
   cart: CartItem[];
   orders: Order[];
+  
+  // ==========================================
+  // MỚI: RỔ CHỨA TRẠNG THÁI BÀI HÁT TỪ DATABASE
+  // ==========================================
+  ownedTrackIds: string[]; 
+  pendingTrackIds: string[]; 
+  setOrderTracks: (owned: string[], pending: string[]) => void;
+  
   login: (u: User) => void;
   logout: () => void;
   updateUser: (u: Partial<User>) => void;
@@ -64,6 +70,12 @@ export const useStore = create<Store>()(
       user: null,
       cart: [],
       orders: [],
+      
+      // Khởi tạo và thiết lập hàm cập nhật rổ chứa
+      ownedTrackIds: [],
+      pendingTrackIds: [],
+      setOrderTracks: (owned, pending) => set({ ownedTrackIds: owned, pendingTrackIds: pending }),
+      
       login: (u) => set({ user: u }),
       logout: () => set({ user: null, cart: [] }),
       updateUser: (u) => set((s) => ({ user: s.user ? { ...s.user, ...u } : s.user })),
