@@ -22,7 +22,7 @@ function Cart() {
 
   function pay() {
     const id = checkout();
-    toast.success("Đơn hàng đã tạo");
+    // toast.success("Đơn hàng đã tạo");
     navigate({ to: "/checkout/$id", params: { id } });
   }
 
