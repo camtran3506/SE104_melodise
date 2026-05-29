@@ -44,42 +44,46 @@ function AccountsPage() {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Account | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
+  // 1. ĐÃ TÁCH: Hàm lấy danh sách tài khoản từ Database
+  const fetchAccounts = async () => {
+    setLoading(true);
 
-      const { data: authData } = await melodiseDb.auth.getUser();
-      console.log("Tài khoản đang gọi Data là:", authData.user ? authData.user.email : "KHÁCH LẠ (CHƯA ĐĂNG NHẬP)");
+    const { data: authData } = await melodiseDb.auth.getUser();
+    console.log("Tài khoản đang gọi Data là:", authData.user ? authData.user.email : "KHÁCH LẠ (CHƯA ĐĂNG NHẬP)");
+    
+    const { data, error } = await melodiseDb
+      .from("users")
+      .select("user_id, full_name, phone_number, email, role, created_at, auth_id")
+      .order('user_id', { ascending: true });
       
-      const { data, error } = await melodiseDb
-        .from("users")
-        .select("user_id, full_name, phone_number, email, role, created_at, auth_id")
-        .order('user_id', { ascending: true });
-        
-      if (error || !data) {
-        setNotice(
-          `Không đọc được bảng users: ${error?.message ?? "RLS từ chối"}. Hãy đăng xuất rồi đăng nhập lại bằng tài khoản Supabase Auth hợp lệ (chỉ authenticated mới được xem).`,
-        );
-        setLoading(false);
-        return;
-      }
-
-      const mapped: Account[] = data.map((u: any) => {
-        return {
-          user_id: u.user_id,
-          full_name: u.full_name ?? "(chưa cập nhật)",
-          phone_number: u.phone_number ?? "",
-          email: u.email ?? "",
-          role: (u.role as Role) ?? "Khách hàng", 
-          password: u.password, 
-          created_at: u.created_at,
-          auth_id: u.auth_id,
-        };
-      });
-      
-      setAccounts(mapped);
+    if (error || !data) {
+      setNotice(
+        `Không đọc được bảng users: ${error?.message ?? "RLS từ chối"}. Hãy đăng xuất rồi đăng nhập lại bằng tài khoản Supabase Auth hợp lệ (chỉ authenticated mới được xem).`,
+      );
       setLoading(false);
-    })();
+      return;
+    }
+
+    const mapped: Account[] = data.map((u: any) => {
+      return {
+        user_id: u.user_id,
+        full_name: u.full_name ?? "(chưa cập nhật)",
+        phone_number: u.phone_number ?? "",
+        email: u.email ?? "",
+        role: (u.role as Role) ?? "Khách hàng", 
+        password: u.password, 
+        created_at: u.created_at,
+        auth_id: u.auth_id,
+      };
+    });
+    
+    setAccounts(mapped);
+    setLoading(false);
+  };
+
+  // 2. Chạy hàm lấy dữ liệu khi trang vừa load xong
+  useEffect(() => {
+    fetchAccounts();
   }, []);
 
   const filtered = useMemo(() => {
@@ -159,8 +163,6 @@ function AccountsPage() {
         });
 
         if (error) throw error;
-
-        setAccounts((prev) => prev.map((a) => (a.user_id === formData.user_id ? updatedUser : a)));
         toast.success("Cập nhật tài khoản thành công");
 
       } else {
@@ -177,13 +179,15 @@ function AccountsPage() {
         if (error) {
           throw await parseServerError(error);
         }
-
-        setAccounts((prev) => [...prev, newUser]);
         toast.success("Thêm tài khoản thành công");
       }
 
+      // Đóng cửa sổ chỉnh sửa/thêm mới
       setEditing(null);
       setCreating(false);
+
+      // 3. ĐÃ THÊM: Gọi lại hàm lấy dữ liệu để làm mới bảng thay vì dùng window.location.reload()
+      await fetchAccounts();
 
     } catch (error: any) {
       console.error("Lỗi lưu dữ liệu:", error);
