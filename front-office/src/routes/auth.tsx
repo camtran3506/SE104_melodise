@@ -92,31 +92,45 @@ function Auth() {
       }
 
       try {
-        // GỌI API ĐĂNG NHẬP TỪ SUPABASE
-        const { data, error } = await supabase.auth.signInWithPassword({
+        // 1. GỌI API ĐĂNG NHẬP TỪ SUPABASE
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
           email: email,
           password: password,
         });
 
-        if (error) {
+        if (authError || !authData.user) {
           return toast.error("Email hoặc mật khẩu không chính xác");
         }
 
-        // Lấy thông tin role từ metadata
-        const userRoleFromDB = data.user?.user_metadata?.role || "Khách hàng"; 
+        // ==============================================================
+        // 2. MỚI: BỨC TƯỜNG LỬA - KIỂM TRA ROLE TRỰC TIẾP TỪ DATABASE
+        // ==============================================================
+        const { data: dbUser, error: dbError } = await (supabase as any)
+          .from("users")
+          .select("role, full_name, phone_number")
+          .eq("auth_id", authData.user.id)
+          .single();
 
-        // Kiểm tra phân quyền: Chặn nếu không phải Khách hàng
-        if (userRoleFromDB !== "Khách hàng") {
-          await supabase.auth.signOut(); // Bắt buộc đăng xuất phiên làm việc vừa tạo
-          return toast.error("Tài khoản này không có quyền truy cập vào trang mua sắm!");
+        if (dbError || !dbUser) {
+          await supabase.auth.signOut();
+          return toast.error("Lỗi: Không tìm thấy hồ sơ tài khoản trong hệ thống!");
         }
 
-        // Đăng nhập thành công
+        const realRole = dbUser.role; // Lấy role thật từ bảng users
+
+        // 3. Kiểm tra phân quyền: Chặn cứng nếu không phải Khách hàng
+        if (realRole !== "Khách hàng") {
+          await supabase.auth.signOut(); // Bắt buộc đăng xuất phiên làm việc vừa tạo
+          return toast.error("Tài khoản nhân viên/quản trị không được phép truy cập trang mua sắm");
+        }
+        // ==============================================================
+
+        // 4. Đăng nhập hợp lệ -> Lưu vào Global Store
         login({ 
-          name: data.user?.user_metadata?.name || email.split("@")[0], 
-          email: data.user?.email || email, 
-          phone: data.user?.user_metadata?.phone || "", 
-          role: userRoleFromDB 
+          name: dbUser.full_name || authData.user?.user_metadata?.name || email.split("@")[0], 
+          email: authData.user?.email || email, 
+          phone: dbUser.phone_number || authData.user?.user_metadata?.phone || "", 
+          role: realRole 
         });
         
         toast.success("Đăng nhập thành công!");
