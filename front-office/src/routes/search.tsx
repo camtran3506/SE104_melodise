@@ -8,18 +8,14 @@ import { useStore } from "@/lib/store";
 
 type SearchParams = { q?: string; cats?: string };
 
+// SỬA THÀNH (Mở khóa cho Anon):
 export const Route = createFileRoute("/search")({
   component: SearchPage,
   validateSearch: (s: Record<string, unknown>): SearchParams => ({
     q: (s.q as string) ?? "",
     cats: (s.cats as string) ?? "",
   }),
-  beforeLoad: () => {
-    // Precondition: user must be logged in
-    if (typeof window !== "undefined" && !useStore.getState().user) {
-      throw redirect({ to: "/auth" });
-    }
-  },
+  // Đã xóa phần beforeLoad đi để cho phép khách vãng lai vào tìm kiếm
   head: () => ({ meta: [{ title: "Tìm kiếm — melodise" }] }),
 });
 

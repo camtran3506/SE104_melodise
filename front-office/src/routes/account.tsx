@@ -43,6 +43,9 @@ function Account() {
       return toast.error("Vui lòng nhập đầy đủ thông tin");
     }
 
+    // MỚI THÊM: Khẳng định với TypeScript là user luôn tồn tại
+    if (!user) return;
+
     // 2. KIỂM TRA ĐỊNH DẠNG SỐ ĐIỆN THOẠI
     if (!PHONE_REGEX.test(phone.trim())) {
       return toast.error("Số điện thoại không hợp lệ (phải gồm đúng 10 chữ số)");

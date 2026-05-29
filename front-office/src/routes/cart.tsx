@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
 import { Trash2, ShoppingBag, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStore, formatVND } from "@/lib/store";
@@ -9,6 +9,12 @@ import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/cart")({
   component: Cart,
+  beforeLoad: () => {
+    // Precondition: user must be logged in
+    if (typeof window !== "undefined" && !useStore.getState().user) {
+      throw redirect({ to: "/auth" });
+    }
+  },
   head: () => ({ meta: [{ title: "Giỏ hàng — melodise" }] }),
 });
 

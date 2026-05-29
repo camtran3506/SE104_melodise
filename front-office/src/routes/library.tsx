@@ -1,13 +1,20 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Download, FileText, FolderOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Document, Packer, Paragraph, TextRun, AlignmentType } from "docx";
+import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/library")({
   component: Library,
+  beforeLoad: () => {
+    // Precondition: user must be logged in
+    if (typeof window !== "undefined" && !useStore.getState().user) {
+      throw redirect({ to: "/auth" });
+    }
+  },
   head: () => ({ meta: [{ title: "Tài Nguyên — melodise" }] }),
 });
 
