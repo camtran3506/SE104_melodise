@@ -91,6 +91,10 @@ function Auth() {
         return toast.error("Vui lòng nhập đầy đủ thông tin");
       }
 
+      if (!EMAIL_REGEX.test(email)) {
+        return toast.error("Email sai định dạng");
+      }
+
       try {
         // 1. GỌI API ĐĂNG NHẬP TỪ SUPABASE
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -162,7 +166,7 @@ function Auth() {
         </div>
 
         {/* Form Biểu mẫu nhập liệu */}
-        <form onSubmit={submit} className="mt-7 space-y-4">
+        <form onSubmit={submit} noValidate className="mt-7 space-y-4">
           {tab === "register" && (
             <>
               <Input 
