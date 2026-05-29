@@ -12,6 +12,7 @@ export type AuthUser = {
 };
 
 const STORAGE_KEY = "melodise-current-user";
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // 2. Hàm chuẩn hóa Role (Đã thêm Khách hàng)
 function normalizeRole(raw: string | null | undefined): Role | null {
@@ -53,6 +54,10 @@ export async function signIn(
 ): Promise<{ ok: true; user: AuthUser } | { ok: false; error: string }> {
   if (!email.trim() || !password.trim()) {
     return { ok: false, error: "Vui lòng nhập đầy đủ thông tin" };
+  }
+
+  if (!EMAIL_REGEX.test(email.trim())) {
+    return { ok: false, error: "Email sai định dạng" };
   }
 
   // Bước A: Xác thực với Supabase Auth (Để lấy Token/Session)

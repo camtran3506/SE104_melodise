@@ -50,7 +50,7 @@ function LoginPage() {
             </p>
           </div>
 
-          <form onSubmit={onSubmit} className="space-y-4">
+          <form onSubmit={onSubmit} noValidate className="space-y-4">
             <div>
               <label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">
                 Email
