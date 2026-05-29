@@ -667,7 +667,7 @@ function TrackForm({
     // 2. KIỂM TRA TÍNH HỢP LỆ CỦA DỮ LIỆU ĐÃ NHẬP
     const priceVal = Number(form.price);
     if (isNaN(priceVal) || priceVal <= 0 || !Number.isInteger(priceVal)) { 
-      setError("Giá bán phải là số nguyên dương hợp lệ (không chấp nhận số thập phân)."); 
+      setError("Giá bán phải là số nguyên dương."); 
       return; 
     }
 

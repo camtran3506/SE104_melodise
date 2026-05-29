@@ -322,7 +322,7 @@ function Library() {
               // Cụm thông tin tác phẩm
               new Paragraph({
                 children: [
-                  new TextRun({ text: "Tên tác phẩm:\t", bold: true, font: "Times New Roman", size: 24 }),
+                  new TextRun({ text: "Tên bài nhạc:\t", bold: true, font: "Times New Roman", size: 24 }),
                   new TextRun({ text: track.title, font: "Times New Roman", size: 24 }),
                 ],
               }),
