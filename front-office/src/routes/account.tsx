@@ -52,12 +52,16 @@ function Account() {
     }
 
     // 3. KIỂM TRA LOGIC ĐỔI MẬT KHẨU
-    if (pw) {
-      if (pw.length < 6) {
-        return toast.error("Mật khẩu mới phải có ít nhất 6 kí tự");
-      }
+    // Sửa thành pw || currentPw: Chỉ cần 1 trong 2 ô có chữ là kích hoạt kiểm tra
+    if (pw || currentPw) { 
       if (!currentPw) {
         return toast.error("Vui lòng nhập mật khẩu hiện tại để xác nhận đổi mật khẩu");
+      }
+      if (!pw) {
+        return toast.error("Vui lòng nhập mật khẩu mới");
+      }
+      if (pw.length < 6) {
+        return toast.error("Mật khẩu mới phải có ít nhất 6 kí tự");
       }
     }
 
